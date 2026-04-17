@@ -1,0 +1,110 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+import os
+
+print("Loading dataset...")
+# Load only a subset to save time during the hackathon / fast prototyping
+df = pd.read_csv('datasets/paysim_database.csv', nrows=500000)
+
+print("Preprocessing data...")
+# Drop columns that are not useful for the simple NN or are strings
+# 'nameOrig', 'nameDest' are IDs, 'isFlaggedFraud' is a naive system flag
+df = df.drop(columns=['step', 'nameOrig', 'nameDest', 'isFlaggedFraud'])
+
+# Convert categorical 'type' to numerical
+label_encoder = LabelEncoder()
+df['type'] = label_encoder.fit_transform(df['type'])
+
+# 'isFraud' is our target variable
+X = df.drop(columns=['isFraud']).values
+y = df['isFraud'].values
+
+# Split data into train and test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Standardize the features
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Convert to PyTorch tensors
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
+X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
+y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
+
+# Create DataLoader
+train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+
+# Define the Neural Network
+class FraudDetectionNet(nn.Module):
+    def __init__(self, input_size):
+        super(FraudDetectionNet, self).__init__()
+        self.fc1 = nn.Linear(input_size, 32)
+        self.relu1 = nn.ReLU()
+        self.fc2 = nn.Linear(32, 16)
+        self.relu2 = nn.ReLU()
+        self.fc3 = nn.Linear(16, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.relu1(out)
+        out = self.fc2(out)
+        out = self.relu2(out)
+        out = self.fc3(out)
+        out = self.sigmoid(out)
+        return out
+
+input_size = X_train.shape[1]
+model = FraudDetectionNet(input_size)
+
+# Loss and optimizer
+criterion = nn.BCELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+print("Training the model...")
+epochs = 5
+for epoch in range(epochs):
+    model.train()
+    running_loss = 0.0
+    for inputs, labels in train_loader:
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item()
+    
+    print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(train_loader):.4f}")
+
+# Optional evaluation step
+model.eval()
+with torch.no_grad():
+    predictions = model(X_test_tensor)
+    predicted_labels = (predictions > 0.5).float()
+    accuracy = (predicted_labels == y_test_tensor).float().mean()
+    print(f"Test Accuracy: {accuracy.item():.4f}")
+
+# Export to ONNX Runtime
+print("Exporting model to ONNX...")
+model.eval()
+dummy_input = torch.randn(1, input_size)  # Create a dummy input with the correct shape
+onnx_filename = "fraud_detection_model.onnx"
+torch.onnx.export(model, 
+                  dummy_input, 
+                  onnx_filename, 
+                  export_params=True, 
+                  opset_version=11, 
+                  do_constant_folding=True, 
+                  input_names=['input'], 
+                  output_names=['output'], 
+                  dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
+
+print(f"Model successfully exported to {onnx_filename}")
