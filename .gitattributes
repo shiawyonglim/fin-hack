@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 datasets/ filter=lfs diff=lfs merge=lfs -text
 datasets/bank_transactions_data_2.csv filter=lfs diff=lfs merge=lfs -text
 datasets/PS_20174392719_1491204439457_log.csv filter=lfs diff=lfs merge=lfs -text
@@ -6,3 +7,6 @@ datasets/PS_20174392719_1491204439457_log.csv filter=lfs diff=lfs merge=lfs -tex
 *.json filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
 *.onnx.data filter=lfs diff=lfs merge=lfs -text
+=======
+*.csv filter=lfs diff=lfs merge=lfs -text
+>>>>>>> 09c69d6 (uploading raw datasets)

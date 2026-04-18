@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 __pycache__/
 *.pyc
 *.pyo
@@ -8,3 +9,6 @@ venv/
 .venv/
 env.bak/
 venv.bak/
+=======
+venv/
+>>>>>>> 09c69d6 (uploading raw datasets)
