@@ -1,0 +1,7 @@
+# Risk Grading Policy
+policy: risk_grading
+auto_classification:
+  file_path_triggers:
+    L3: ["auth", "login", "crypto", "payment"]
+  content_triggers:
+    L3: ["private_key", "password", "api_key"]
