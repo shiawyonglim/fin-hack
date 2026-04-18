@@ -514,3 +514,11 @@
 {"type":"sentinel.verdict","decision":"PASS","riskGrade":"L2","timestamp":"2026-04-18T18:31:18.961Z"}
 {"type":"transparency.prompt","timestamp":"2026-04-18T19:03:03.259Z","payload":{"id":"prompt-1776538983259-18bne4kob","type":"prompt.build_started","timestamp":"2026-04-18T19:03:03.259Z","agentDid":"vscode-user"},"seq":2538}
 {"type":"transparency.prompt","timestamp":"2026-04-18T19:03:03.260Z","payload":{"id":"prompt-1776538983259-18bne4kob","type":"prompt.dispatched","timestamp":"2026-04-18T19:03:03.260Z","agentDid":"vscode-user","promptHash":"ffedb58c"},"seq":2539}
+{"type":"sentinel.verdict","decision":"PASS","riskGrade":"L1","timestamp":"2026-04-18T19:22:51.599Z"}
+{"type":"sentinel.verdict","decision":"PASS","riskGrade":"L1","timestamp":"2026-04-18T19:30:48.584Z"}
+{"type":"governance.l3Queued","filePath":"c:\\finhack\\fin-hack\\index.html","riskGrade":"L1","id":"21d5f4a9-5a4c-44b0-8395-5077d10df28b","timestamp":"2026-04-18T19:32:19.729Z"}
+{"type":"transparency.prompt","timestamp":"2026-04-18T19:32:19.730Z","payload":{"id":"prompt-1776540739730-qekocdt39","type":"prompt.build_started","timestamp":"2026-04-18T19:32:19.730Z","agentDid":"vscode-user"},"seq":3044}
+{"type":"transparency.prompt","timestamp":"2026-04-18T19:32:19.731Z","payload":{"id":"prompt-1776540739730-qekocdt39","type":"prompt.dispatch_blocked","timestamp":"2026-04-18T19:32:19.731Z","agentDid":"vscode-user","blockedReason":"Action file.write requires active intent for risk level L2","riskGrade":"L2"},"seq":3045}
+{"type":"governance.l3Queued","filePath":"c:\\finhack\\fin-hack\\index.html","riskGrade":"L1","id":"ae02383a-a97d-428b-887f-bee57ecaaba6","timestamp":"2026-04-18T19:32:33.300Z"}
+{"type":"transparency.prompt","timestamp":"2026-04-18T19:32:33.301Z","payload":{"id":"prompt-1776540753301-rm6kxyt3h","type":"prompt.build_started","timestamp":"2026-04-18T19:32:33.301Z","agentDid":"vscode-user"},"seq":3049}
+{"type":"transparency.prompt","timestamp":"2026-04-18T19:32:33.301Z","payload":{"id":"prompt-1776540753301-rm6kxyt3h","type":"prompt.dispatch_blocked","timestamp":"2026-04-18T19:32:33.301Z","agentDid":"vscode-user","blockedReason":"Action file.write requires active intent for risk level L2","riskGrade":"L2"},"seq":3050}
