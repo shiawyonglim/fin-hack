@@ -2,7 +2,7 @@ import onnxruntime as ort
 import numpy as np
 
 # Load the ONNX model
-onnx_model_path = "fraud_detection_model.onnx"
+onnx_model_path = "../models/fraud_detection_model.onnx"
 session = ort.InferenceSession(onnx_model_path)
 
 # Example input based on the 6 input features we trained on

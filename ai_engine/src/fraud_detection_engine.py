@@ -128,7 +128,7 @@ class ScammerDatabase:
     Every time the system connects to wifi, this list gets refreshed.
     """
 
-    def __init__(self, investor_alert_csv: str = "datasets/investor_alert_list.csv"):
+    def __init__(self, investor_alert_csv: str = "../data/investor_alert_list.csv"):
         self.scammer_names = set()
         self.scammer_aliases = set()
         self.scammer_entries = []
@@ -533,7 +533,7 @@ class OnnxFraudModel:
         "TRANSFER": 4,
     }
 
-    def __init__(self, model_path: str = "fraud_detection_model.onnx"):
+    def __init__(self, model_path: str = "../models/fraud_detection_model.onnx"):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"ONNX model not found: {model_path}")
         self.session = ort.InferenceSession(model_path)
@@ -581,8 +581,8 @@ class FraudDetectionEngine:
                   checks receiver against CACHED scammer database.
     """
 
-    def __init__(self, onnx_model_path: str = "fraud_detection_model.onnx",
-                 scammer_db_csv: str = "datasets/investor_alert_list.csv"):
+    def __init__(self, onnx_model_path: str = "../models/fraud_detection_model.onnx",
+                 scammer_db_csv: str = "../data/investor_alert_list.csv"):
         self.onnx_model = OnnxFraudModel(onnx_model_path)
         self.scammer_db = ScammerDatabase(scammer_db_csv)
         self.rule_engine = DeterministicRuleEngine()

@@ -15,6 +15,10 @@
 =============================================================================
 """
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
+
 from fraud_detection_engine import (
     FraudDetectionEngine, Transaction, UserCategory, RiskLevel
 )
@@ -24,8 +28,8 @@ import json
 # Initialize the engine (loads ONNX model + Scammer DB)
 print("Initializing Fraud Detection Engine...")
 engine = FraudDetectionEngine(
-    onnx_model_path="fraud_detection_model.onnx",
-    scammer_db_csv="datasets/investor_alert_list.csv",
+    onnx_model_path="../models/fraud_detection_model.onnx",
+    scammer_db_csv="../data/investor_alert_list.csv",
 )
 
 

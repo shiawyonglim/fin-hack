@@ -9,7 +9,7 @@ import os
 
 print("Loading dataset...")
 # Load only a subset to save time during the hackathon / fast prototyping
-df = pd.read_csv('datasets/paysim_database.csv', nrows=500000)
+df = pd.read_csv('../data/paysim_database.csv', nrows=500000)
 
 print("Preprocessing data...")
 # Drop columns that are not useful for the simple NN or are strings
@@ -96,7 +96,7 @@ with torch.no_grad():
 print("Exporting model to ONNX...")
 model.eval()
 dummy_input = torch.randn(1, input_size)  # Create a dummy input with the correct shape
-onnx_filename = "fraud_detection_model.onnx"
+onnx_filename = "../models/fraud_detection_model.onnx"
 torch.onnx.export(model, 
                   dummy_input, 
                   onnx_filename, 

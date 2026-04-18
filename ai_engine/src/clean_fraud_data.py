@@ -3,7 +3,7 @@ import numpy as np
 import random
 
 print("Loading dataset...")
-df_raw = pd.read_csv('paysim.csv')
+df_raw = pd.read_csv('../data/paysim.csv')
 
 df = df_raw[df_raw['type'] == 'TRANSFER'].copy()
 df = df.sample(n=20000, random_state=42).copy()
@@ -26,5 +26,5 @@ df['sender_age'] = df['is_fraud'].apply(assign_age)
 final_columns = ['sender_age', 'time_of_day', 'transfer_amount', 'past_7_days_velocity', 'is_fraud']
 df_final = df[final_columns]
 
-df_final.to_csv('final_behavioral_dataset.csv', index=False)
+df_final.to_csv('../data/final_behavioral_dataset.csv', index=False)
 print("Data is ready for modeling.")
