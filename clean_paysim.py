@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv('paysim_database.csv')
+df = pd.read_csv('ai_engine/data/paysim_database.csv')
 
 df.columns = [col.lower() for col in df.columns]
 df = df.rename(columns={
@@ -11,7 +11,7 @@ df = df.rename(columns={
     'newbalancedest': 'new_balance_dest'
 })
 
-df = df.drop(columns=['nameorig', 'namedest'])
+df = df.drop(columns=['nameorig'], errors='ignore')
 
 df_cleaned = df[df['type'].isin(['TRANSFER', 'CASH_OUT'])].copy()
 
