@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edge Evaluation Protocol (ONNX Web)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary-accent: #00e5ff;
+            --primary-accent-glow: rgba(0, 229, 255, 0.4);
+            --danger-accent: #ff2a55;
+            --danger-accent-glow: rgba(255, 42, 85, 0.4);
+            --warning-accent: #ffaa00;
+            --success-accent: #00ff73;
+            --text-main: #f0f4f8;
+            --text-muted: #8b9bb4;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(0, 229, 255, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(255, 42, 85, 0.05), transparent 25%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            padding: 40px;
+            background: var(--surface-color);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .container:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        input, select {
+            width: 100%;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--primary-accent);
+            box-shadow: 0 0 16px var(--primary-accent-glow);
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-accent), #0077ff);
+            color: #fff;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px var(--primary-accent-glow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px var(--primary-accent-glow);
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button:disabled {
+            background: #333;
+            color: #777;
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #resultPanel {
+            margin-top: 32px;
+            padding: 24px;
+            border-radius: 16px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid var(--border-color);
+            display: none;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(10px);
+            animation: slideUp 0.4s forwards;
+        }
+
+        #resultPanel.visible {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @keyframes slideUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .score-display {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin: 8px 0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-safe {
+            color: var(--success-accent);
+            background: rgba(0, 255, 115, 0.1);
+            border: 1px solid rgba(0, 255, 115, 0.3);
+            text-shadow: 0 0 10px rgba(0, 255, 115, 0.5);
+        }
+
+        .status-warning {
+            color: var(--warning-accent);
+            background: rgba(255, 170, 0, 0.1);
+            border: 1px solid rgba(255, 170, 0, 0.3);
+            text-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
+        }
+
+        .status-danger {
+            color: var(--danger-accent);
+            background: rgba(255, 42, 85, 0.1);
+            border: 1px solid rgba(255, 42, 85, 0.3);
+            text-shadow: 0 0 10px rgba(255, 42, 85, 0.5);
+        }
+
+        .loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255ంటే,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            display: none;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Zero-Trust Edge Simulator</h1>
+            <p class="subtitle">ONNX Runtime WebAssembly Inference</p>
+        </header>
+
+        <div class="form-group">
+            <label for="txnType">Transaction Type</label>
+            <select id="txnType">
+                <option value="TRANSFER">TRANSFER (High Risk)</option>
+                <option value="PAYMENT">PAYMENT (Standard)</option>
+                <option value="CASH_OUT">CASH_OUT</option>
+                <option value="CASH_IN">CASH_IN</option>
+                <option value="DEBIT">DEBIT</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="amount">Transfer Amount (RM)</label>
+            <input type="number" id="amount" value="5000" min="0" step="100">
+        </div>
+
+        <div class="form-group">
+            <label for="balance">Sender Current Balance (RM)</label>
+            <input type="number" id="balance" value="5000" min="0" step="100">
+        </div>
+
+        <button id="runBtn">
+            <span class="btn-text">EVALUATE RISk</span>
+            <div class="loader" id="loader"></div>
+        </button>
+
+        <div id="resultPanel">
+            <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">AI Verification</p>
+            <div class="score-display" id="probabilityText">0.00%</div>
+            <div class="status-badge" id="statusBadge">ANALYZING...</div>
+        </div>
+    </div>
+
+    <script>
+        // Set path to ONNX model.
+        // Needs a local server (e.g. `python -m http.server`) from root.
+        const MODEL_URL = '../ai_engine/models/fraud_detection_model.onnx';
+        let session = null;
+
+        const TYPE_ENCODING = {
+            "CASH_IN": 0,
+            "CASH_OUT": 1,
+            "DEBIT": 2,
+            "PAYMENT": 3,
+            "TRANSFER": 4
+        };
+
+        const runBtn = document.getElementById('runBtn');
+        const btnText = document.querySelector('.btn-text');
+        const loader = document.getElementById('loader');
+        const resultPanel = document.getElementById('resultPanel');
+        const probabilityText = document.getElementById('probabilityText');
+        const statusBadge = document.getElementById('statusBadge');
+
+        async function initModel() {
+            try {
+                // Pre-load ONNX Session
+                btnText.textContent = "LOADING NEURAL ENGINE...";
+                runBtn.disabled = true;
+                
+                // Initialize ONNX Web without throwing CORS if served properly
+                session = await ort.InferenceSession.create(MODEL_URL);
+                
+                btnText.textContent = "EVALUATE RISK LOCALLY (0ms)";
+                runBtn.disabled = false;
+            } catch (e) {
+                console.error("ONNX Initialization Failed: ", e);
+                btnText.textContent = "MODEL LOAD ERROR";
+                alert("Failed to load model. Ensure you are running a local HTTP server (e.g. `python -m http.server` in the repository root) to bypass CORS restrictions.");
+            }
+        }
+
+        async function evaluateFraud() {
+            if (!session) return;
+            
+            // UI State updates
+            btnText.style.display = "none";
+            loader.style.display = "inline-block";
+            runBtn.disabled = true;
+            resultPanel.classList.remove('visible');
+
+            // Gather inputs
+            const typeStr = document.getElementById('txnType').value;
+            const amount = parseFloat(document.getElementById('amount').value);
+            const balance = parseFloat(document.getElementById('balance').value);
+            
+            // Feature construction matching `test_onnx_inference.py` behavior:
+            // [type, amount, oldbalanceOrg, newbalanceOrig, oldbalanceDest, newbalanceDest]
+            const encodedType = TYPE_ENCODING[typeStr] || 4;
+            const newBalanceOrig = Math.max(0, balance - amount);
+            const oldBalanceDest = 0.0;
+            const newBalanceDest = amount; // Approximation for blind relay
+
+            const inputFeatures = Float32Array.from([
+                encodedType, 
+                amount, 
+                balance, 
+                newBalanceOrig, 
+                oldBalanceDest, 
+                newBalanceDest
+            ]);
+
+            try {
+                // Tensor creation
+                const tensor = new ort.Tensor('float32', inputFeatures, [1, 6]);
+                const inputName = session.inputNames[0];
+                const feeds = {};
+                feeds[inputName] = tensor;
+
+                // Edge Inference Execution
+                const results = await session.run(feeds);
+                const outputName = session.outputNames[0];
+                const probability = results[outputName].data[0];
+
+                updateUI(probability, amount, balance);
+
+            } catch (err) {
+                console.error("Inference Error:", err);
+                alert("Inference Failed. See console logs.");
+            } finally {
+                btnText.style.display = "inline-block";
+                loader.style.display = "none";
+                runBtn.disabled = false;
+            }
+        }
+
+        function updateUI(prob, amount, balance) {
+            const pct = (prob * 100).toFixed(2);
+            probabilityText.textContent = `${pct}%`;
+            
+            // Reset badge classes
+            statusBadge.className = 'status-badge';
+            
+            if (prob > 0.5 || (amount >= balance && amount > 1000)) {
+                // Emojis removed, pure styled ascii text
+                statusBadge.textContent = "FRAUD DETECTED (BLOCKED)";
+                statusBadge.classList.add('status-danger');
+                probabilityText.style.color = "var(--danger-accent)";
+            } else if (prob > 0.3) {
+                statusBadge.textContent = "ANOMALOUS (WARNING)";
+                statusBadge.classList.add('status-warning');
+                probabilityText.style.color = "var(--warning-accent)";
+            } else {
+                statusBadge.textContent = "CLEAN (ALLOWED)";
+                statusBadge.classList.add('status-safe');
+                probabilityText.style.color = "var(--text-main)";
+            }
+
+            resultPanel.classList.add('visible');
+        }
+
+        runBtn.addEventListener('click', evaluateFraud);
+
+        // Bootstrap on load
+        window.addEventListener('load', initModel);
+
+    </script>
+</body>
+</html>

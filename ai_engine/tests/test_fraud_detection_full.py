@@ -28,8 +28,8 @@ import json
 # Initialize the engine (loads ONNX model + Scammer DB)
 print("Initializing Fraud Detection Engine...")
 engine = FraudDetectionEngine(
-    onnx_model_path="../models/fraud_detection_model.onnx",
-    scammer_db_csv="../data/investor_alert_list.csv",
+    onnx_model_path=os.path.join(os.path.dirname(__file__), "../models/fraud_detection_model.onnx"),
+    scammer_db_csv=os.path.join(os.path.dirname(__file__), "../data/investor_alert_list.csv"),
 )
 
 
@@ -69,7 +69,7 @@ test1 = run_test(
 )
 assert test1.transaction_allowed == True, "TEST 1 FAILED: safe txn should be allowed"
 assert test1.risk_level == RiskLevel.SAFE
-print(">>> TEST 1 PASSED ✔")
+print(">>> TEST 1 PASSED [PASS]")
 
 
 # =========================================================================
@@ -92,7 +92,7 @@ test2 = run_test(
 )
 assert test2.transaction_allowed == False, "TEST 2 FAILED: scammer transfer should be blocked"
 assert test2.scammer_db_match == True
-print(">>> TEST 2 PASSED ✔")
+print(">>> TEST 2 PASSED [PASS]")
 
 
 # =========================================================================
@@ -115,7 +115,7 @@ test3 = run_test(
 )
 assert test3.transaction_allowed == False, "TEST 3 FAILED: elderly at 2am should be blocked"
 assert test3.sender_category == UserCategory.ELDERLY
-print(">>> TEST 3 PASSED ✔")
+print(">>> TEST 3 PASSED [PASS]")
 
 
 # =========================================================================
@@ -137,7 +137,7 @@ test4 = run_test(
     ),
 )
 assert test4.transaction_allowed == False, "TEST 4 FAILED: elderly balance drain should be blocked"
-print(">>> TEST 4 PASSED ✔")
+print(">>> TEST 4 PASSED [PASS]")
 
 
 # =========================================================================
@@ -165,7 +165,7 @@ test5 = run_test(
     history=fake_history,
 )
 assert test5.transaction_allowed == False, "TEST 5 FAILED: velocity breach should be blocked"
-print(">>> TEST 5 PASSED ✔")
+print(">>> TEST 5 PASSED [PASS]")
 
 
 # =========================================================================
@@ -200,7 +200,7 @@ test6 = run_test(
 )
 assert test6.transaction_allowed == False, "TEST 6 FAILED: auto-detected scammer should be blocked"
 assert test6.sender_category == UserCategory.SCAMMER
-print(">>> TEST 6 PASSED ✔")
+print(">>> TEST 6 PASSED [PASS]")
 
 
 # =========================================================================
@@ -223,7 +223,7 @@ test7 = run_test(
 )
 assert test7.transaction_allowed == False, "TEST 7 FAILED: child exceeding limit should be blocked"
 assert test7.sender_category == UserCategory.CHILD
-print(">>> TEST 7 PASSED ✔")
+print(">>> TEST 7 PASSED [PASS]")
 
 
 # =========================================================================
@@ -247,7 +247,7 @@ test8 = run_test(
 )
 assert test8.transaction_allowed == False, "TEST 8 FAILED: offline scammer DB should still block"
 assert test8.scammer_db_match == True
-print(">>> TEST 8 PASSED ✔")
+print(">>> TEST 8 PASSED [PASS]")
 
 
 # =========================================================================
@@ -271,7 +271,7 @@ test9 = run_test(
 )
 assert test9.transaction_allowed == False, "TEST 9 FAILED: flagged person should stay blocked"
 assert test9.sender_category == UserCategory.SCAMMER
-print(">>> TEST 9 PASSED ✔")
+print(">>> TEST 9 PASSED [PASS]")
 
 
 # =========================================================================
@@ -294,7 +294,7 @@ test10 = run_test(
 )
 # This might trigger the NN, the balance drain rule, or both
 print(f">>> TEST 10: ONNX Probability = {test10.onnx_fraud_probability*100:.2f}%")
-print(">>> TEST 10 COMPLETED ✔")
+print(">>> TEST 10 COMPLETED [PASS]")
 
 
 # =========================================================================
@@ -305,16 +305,16 @@ print("  ALL TESTS COMPLETED SUCCESSFULLY!")
 print("=" * 70)
 print("""
   Features Verified:
-   ✔  Safe transaction detection
-   ✔  Scammer database lookup (SC Investor Alert List)
-   ✔  Elderly time anomaly (2 AM block)
-   ✔  Elderly balance drain protection
-   ✔  High-stake velocity detection (money laundering)
-   ✔  Auto scammer detection via self-evaluation
-   ✔  Child account protection
-   ✔  Offline / Zero-Trust Edge evaluation
-   ✔  Flagged person persistence across transactions
-   ✔  ONNX neural network fraud probability scoring
-   ✔  Deterministic rule engine with plain-text compliance logs
-   ✔  White-box audit trail for every decision
+   *  Safe transaction detection
+   *  Scammer database lookup (SC Investor Alert List)
+   *  Elderly time anomaly (2 AM block)
+   *  Elderly balance drain protection
+   *  High-stake velocity detection (money laundering)
+   *  Auto scammer detection via self-evaluation
+   *  Child account protection
+   *  Offline / Zero-Trust Edge evaluation
+   *  Flagged person persistence across transactions
+   *  ONNX neural network fraud probability scoring
+   *  Deterministic rule engine with plain-text compliance logs
+   *  White-box audit trail for every decision
 """)

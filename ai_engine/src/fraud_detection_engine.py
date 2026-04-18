@@ -23,6 +23,10 @@ import json
 import os
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field, asdict
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_SCAMMER_CSV = os.path.join(BASE_DIR, "../data/investor_alert_list.csv")
+DEFAULT_ONNX_MODEL = os.path.join(BASE_DIR, "../models/fraud_detection_model.onnx")
 from enum import Enum
 from typing import Optional
 
@@ -128,7 +132,7 @@ class ScammerDatabase:
     Every time the system connects to wifi, this list gets refreshed.
     """
 
-    def __init__(self, investor_alert_csv: str = "../data/investor_alert_list.csv"):
+    def __init__(self, investor_alert_csv: str = DEFAULT_SCAMMER_CSV):
         self.scammer_names = set()
         self.scammer_aliases = set()
         self.scammer_entries = []
@@ -533,7 +537,7 @@ class OnnxFraudModel:
         "TRANSFER": 4,
     }
 
-    def __init__(self, model_path: str = "../models/fraud_detection_model.onnx"):
+    def __init__(self, model_path: str = DEFAULT_ONNX_MODEL):
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"ONNX model not found: {model_path}")
         self.session = ort.InferenceSession(model_path)
@@ -581,8 +585,8 @@ class FraudDetectionEngine:
                   checks receiver against CACHED scammer database.
     """
 
-    def __init__(self, onnx_model_path: str = "../models/fraud_detection_model.onnx",
-                 scammer_db_csv: str = "../data/investor_alert_list.csv"):
+    def __init__(self, onnx_model_path: str = DEFAULT_ONNX_MODEL,
+                 scammer_db_csv: str = DEFAULT_SCAMMER_CSV):
         self.onnx_model = OnnxFraudModel(onnx_model_path)
         self.scammer_db = ScammerDatabase(scammer_db_csv)
         self.rule_engine = DeterministicRuleEngine()
@@ -680,10 +684,10 @@ class FraudDetectionEngine:
     def print_result(self, result: FraudResult):
         """Pretty-print the fraud detection result with compliance logs"""
         print("\n" + "=" * 70)
-        print("  FRAUD DETECTION ENGINE — COMPLIANCE REPORT")
+        print("  FRAUD DETECTION ENGINE - COMPLIANCE REPORT")
         print("=" * 70)
 
-        status = "✅ ALLOWED" if result.transaction_allowed else "🚫 BLOCKED"
+        status = "PASS: ALLOWED" if result.transaction_allowed else "FAIL: BLOCKED"
         print(f"  Status          : {status}")
         print(f"  Risk Level      : {result.risk_level.value}")
         print(f"  AI Fraud Score  : {result.onnx_fraud_probability * 100:.2f}%")
@@ -693,7 +697,7 @@ class FraudDetectionEngine:
         if result.warnings:
             print("\n  --- WARNINGS ---")
             for w in result.warnings:
-                print(f"  ⚠  {w}")
+                print(f"  [!] {w}")
 
         print("\n  --- COMPLIANCE LOG (Plain-Text, White-Box) ---")
         for log in result.compliance_logs:
@@ -702,7 +706,7 @@ class FraudDetectionEngine:
             print(f"    Description: {log.rule_description}")
             print(f"    Boundary   : {log.boundary_value}")
             print(f"    Actual     : {log.actual_value}")
-            print(f"    Result     : {log.result} → {log.action}")
+            print(f"    Result     : {log.result} -> {log.action}")
             print()
 
         print("=" * 70)
