@@ -1,0 +1,9 @@
+# Scrivener Persona
+persona: scrivener
+version: 1.0.0
+description: Code generation agent
+risk_tolerance: L2
+verification_requirements:
+  L1: sampling_10_percent
+  L2: full_sentinel_pass
+  L3: escalate_to_overseer

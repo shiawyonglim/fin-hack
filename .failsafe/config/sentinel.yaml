@@ -1,0 +1,35 @@
+# Sentinel Configuration
+sentinel:
+  enabled: true
+  mode: hybrid
+  localModel: "phi3:mini"
+  ollamaEndpoint: "http://localhost:11434"
+
+evaluation:
+  enabled: true
+  mode: production # production | debug | audit
+  routing:
+    tier2_risk_threshold: R2
+    tier3_risk_threshold: R3
+    tier2_novelty_threshold: high
+    tier3_novelty_threshold: medium
+    tier2_confidence_threshold: low
+    tier3_confidence_threshold: low
+  ledger:
+    tier0_enabled: false
+    tier1_enabled: false
+    tier2_enabled: false
+    tier3_enabled: true
+
+genesis:
+  livingGraph: true
+  cortexOmnibar: true
+  theme: starry-night
+
+qorelogic:
+  ledgerPath: ".failsafe/ledger/soa_ledger.db"
+  strictMode: false
+  l3SLA: 120
+
+feedback:
+  outputDir: ".failsafe/feedback"

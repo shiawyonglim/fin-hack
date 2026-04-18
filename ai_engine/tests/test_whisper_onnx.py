@@ -3,7 +3,8 @@ from transformers import AutoProcessor, pipeline
 import librosa
 import time
 
-model_id = "whisper-tiny-onnx"
+import os
+model_id = os.path.join(os.path.dirname(__file__), "../models/whisper-tiny-onnx")
 
 print("Loading ONNX model and processor (this proves the models load correctly in ONNX)...")
 model = ORTModelForSpeechSeq2Seq.from_pretrained(model_id)
@@ -19,7 +20,7 @@ pipe = pipeline(
 
 print("Loading synthesized audio file...")
 # Whisper expects 16kHz sampling rate
-audio, sr = librosa.load("sample_voice.wav", sr=16000)
+audio, sr = librosa.load(os.path.join(os.path.dirname(__file__), "../scripts/sample_voice.wav"), sr=16000)
 
 print(f"Loaded audio: {len(audio)/sr:.2f} seconds")
 
