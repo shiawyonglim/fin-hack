@@ -3,391 +3,904 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edge Evaluation Protocol (ONNX Web)</title>
+    <title>Zero-Trust Edge Simulator | Fin-Hack</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-
     <style>
         :root {
-            --bg-color: #0b0f19;
-            --surface-color: rgba(255, 255, 255, 0.03);
-            --border-color: rgba(255, 255, 255, 0.08);
-            --primary-accent: #00e5ff;
-            --primary-accent-glow: rgba(0, 229, 255, 0.4);
-            --danger-accent: #ff2a55;
-            --danger-accent-glow: rgba(255, 42, 85, 0.4);
-            --warning-accent: #ffaa00;
-            --success-accent: #00ff73;
-            --text-main: #f0f4f8;
-            --text-muted: #8b9bb4;
+            --bg: #060a13;
+            --surface: rgba(255,255,255,0.03);
+            --surface-2: rgba(255,255,255,0.06);
+            --border: rgba(255,255,255,0.07);
+            --border-focus: rgba(0,229,255,0.5);
+            --cyan: #00e5ff;
+            --cyan-dim: rgba(0,229,255,0.15);
+            --red: #ff2a55;
+            --red-dim: rgba(255,42,85,0.15);
+            --orange: #ffaa00;
+            --orange-dim: rgba(255,170,0,0.12);
+            --green: #00ff73;
+            --green-dim: rgba(0,255,115,0.12);
+            --purple: #a78bfa;
+            --text: #eef2f7;
+            --text-dim: #6b7d99;
+            --mono: 'JetBrains Mono', monospace;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
+            background: var(--bg);
+            color: var(--text);
             min-height: 100vh;
+            overflow-x: hidden;
+            background-image:
+                radial-gradient(ellipse at 10% 40%, rgba(0,229,255,0.06), transparent 40%),
+                radial-gradient(ellipse at 90% 60%, rgba(255,42,85,0.04), transparent 40%);
+        }
+
+        /* ────── HEADER ────── */
+        .topbar {
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
-            background-image: 
-                radial-gradient(circle at 15% 50%, rgba(0, 229, 255, 0.08), transparent 25%),
-                radial-gradient(circle at 85% 30%, rgba(255, 42, 85, 0.05), transparent 25%);
+            padding: 16px 32px;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            position: sticky; top: 0; z-index: 100;
+            background: rgba(6,10,19,0.85);
+        }
+        .topbar h1 {
+            font-size: 1rem; font-weight: 800; letter-spacing: -0.3px;
+            background: linear-gradient(90deg, var(--cyan), var(--purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .topbar .model-status {
+            font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 1.2px; display: flex; align-items: center; gap: 8px;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #555; transition: background 0.4s;
+        }
+        .status-dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .status-dot.error { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+        /* ────── MAIN LAYOUT ────── */
+        .app {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 0;
+            padding: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+            min-height: calc(100vh - 65px);
+            align-items: start;
         }
 
-        .container {
-            width: 100%;
-            max-width: 500px;
-            padding: 40px;
-            background: var(--surface-color);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border-color);
-            border-radius: 24px;
-            box-shadow: 0 24px 64px rgba(0,0,0,0.4);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        /* ────── PERSON CARD ────── */
+        .person-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px;
+            transition: box-shadow 0.3s;
         }
+        .person-card:hover {
+            box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+        }
+        .card-header {
+            display: flex; align-items: center; gap: 14px; margin-bottom: 24px;
+        }
+        .avatar {
+            width: 48px; height: 48px; border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; font-weight: 800;
+        }
+        .avatar.sender { background: var(--cyan-dim); color: var(--cyan); }
+        .avatar.receiver { background: var(--red-dim); color: var(--red); }
+        .card-title { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+        .card-name { font-size: 1.1rem; font-weight: 700; }
 
-        .container:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 32px 80px rgba(0,0,0,0.6);
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-
-        h1 {
-            font-size: 1.5rem;
-            font-weight: 800;
-            letter-spacing: -0.5px;
-            margin-bottom: 8px;
-            background: linear-gradient(90deg, #fff, var(--text-muted));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        p.subtitle {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            font-weight: 300;
-        }
-
-        .form-group {
-            margin-bottom: 24px;
-        }
+        .form-row { display: flex; gap: 12px; margin-bottom: 14px; }
+        .form-row .field { flex: 1; }
 
         label {
-            display: block;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-            font-weight: 600;
+            display: block; font-size: 0.65rem; text-transform: uppercase;
+            letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 6px; font-weight: 600;
         }
-
         input, select {
-            width: 100%;
-            background: rgba(0,0,0,0.2);
-            border: 1px solid var(--border-color);
-            color: #fff;
-            padding: 14px 16px;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-family: inherit;
-            transition: all 0.2s ease;
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+            color: #fff; padding: 10px 12px; border-radius: 10px;
+            font-size: 0.9rem; font-family: inherit; transition: border-color 0.2s;
         }
-
         input:focus, select:focus {
-            outline: none;
-            border-color: var(--primary-accent);
-            box-shadow: 0 0 16px var(--primary-accent-glow);
+            outline: none; border-color: var(--border-focus);
+            box-shadow: 0 0 12px rgba(0,229,255,0.15);
         }
 
-        button {
-            width: 100%;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary-accent), #0077ff);
-            color: #fff;
-            font-weight: 800;
-            font-size: 1rem;
-            cursor: pointer;
-            letter-spacing: 0.5px;
-            transition: all 0.3s ease;
-            box-shadow: 0 8px 32px var(--primary-accent-glow);
-            position: relative;
-            overflow: hidden;
+        .balance-display {
+            margin-top: 16px; padding: 14px 16px;
+            background: rgba(0,0,0,0.25); border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .balance-label { font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; }
+        .balance-value { font-size: 1.6rem; font-weight: 800; margin-top: 4px; }
+        .category-tag {
+            display: inline-block; padding: 3px 10px; border-radius: 6px;
+            font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.6px; margin-top: 8px;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px var(--primary-accent-glow);
+        /* ────── CENTRE TRANSFER PANEL ────── */
+        .transfer-panel {
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; padding: 24px 16px; gap: 16px;
+            min-width: 200px;
+        }
+        .transfer-panel .arrow-line {
+            width: 2px; height: 40px;
+            background: linear-gradient(to bottom, transparent, var(--cyan), transparent);
+        }
+        .txn-field { width: 100%; }
+        .txn-field label { text-align: center; }
+        .txn-field input, .txn-field select {
+            text-align: center; font-weight: 700; font-size: 1rem;
         }
 
-        button:active {
-            transform: translateY(1px);
+        .send-btn {
+            width: 100%; padding: 14px 20px; border: none; border-radius: 12px;
+            background: linear-gradient(135deg, var(--cyan), #0077ff);
+            color: #fff; font-weight: 800; font-size: 0.85rem; cursor: pointer;
+            letter-spacing: 0.5px; transition: all 0.3s;
+            box-shadow: 0 6px 24px rgba(0,229,255,0.25);
+            text-transform: uppercase;
+        }
+        .send-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(0,229,255,0.35); }
+        .send-btn:active { transform: translateY(1px); }
+        .send-btn:disabled { background: #222; color: #555; box-shadow: none; cursor: not-allowed; transform: none; }
+
+        .txn-counter {
+            font-size: 0.7rem; color: var(--text-dim); text-align: center;
         }
 
-        button:disabled {
-            background: #333;
-            color: #777;
-            box-shadow: none;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        #resultPanel {
-            margin-top: 32px;
-            padding: 24px;
-            border-radius: 16px;
-            background: rgba(0,0,0,0.4);
-            border: 1px solid var(--border-color);
+        /* ────── RESULT PANEL (BOTTOM) ────── */
+        .result-strip {
+            grid-column: 1 / -1;
+            margin-top: 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px 32px;
             display: none;
-            text-align: center;
-            opacity: 0;
-            transform: translateY(10px);
-            animation: slideUp 0.4s forwards;
+            animation: fadeUp 0.4s forwards;
         }
-
-        #resultPanel.visible {
-            display: block;
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        @keyframes slideUp {
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        .result-strip.visible { display: block; }
 
-        .score-display {
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin: 8px 0;
+        .result-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+        }
+        .result-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+        .result-verdict {
+            font-size: 0.8rem; font-weight: 800; padding: 6px 16px;
+            border-radius: 8px; text-transform: uppercase; letter-spacing: 0.8px;
+        }
+        .verdict-allowed { background: var(--green-dim); color: var(--green); border: 1px solid rgba(0,255,115,0.25); }
+        .verdict-blocked { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,42,85,0.25); }
+        .verdict-warning { background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,170,0,0.25); }
+
+        .result-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-bottom: 20px;
+        }
+        .result-metric {
+            background: rgba(0,0,0,0.2); border-radius: 12px; padding: 14px 16px;
+            border: 1px solid var(--border);
+        }
+        .metric-label { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 4px; }
+        .metric-value { font-size: 1.1rem; font-weight: 700; }
+
+        /* Compliance log */
+        .compliance-log {
+            background: rgba(0,0,0,0.3); border-radius: 12px; padding: 16px;
+            max-height: 250px; overflow-y: auto;
+            border: 1px solid var(--border);
+        }
+        .compliance-log::-webkit-scrollbar { width: 4px; }
+        .compliance-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .log-title { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 12px; }
+        .log-entry {
+            padding: 10px 12px; margin-bottom: 8px; border-radius: 8px;
+            font-family: var(--mono); font-size: 0.72rem; line-height: 1.6;
+            border-left: 3px solid var(--border);
+        }
+        .log-entry.pass { border-left-color: var(--green); background: rgba(0,255,115,0.03); }
+        .log-entry.fail { border-left-color: var(--red); background: rgba(255,42,85,0.03); }
+        .log-entry.warn { border-left-color: var(--orange); background: rgba(255,170,0,0.03); }
+        .log-key { color: var(--text-dim); }
+        .log-val { color: var(--text); }
+
+        /* ────── HISTORY SIDEBAR ────── */
+        .history-strip {
+            grid-column: 1 / -1;
+            margin-top: 16px;
+        }
+        .history-title {
+            font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
+            color: var(--text-dim); margin-bottom: 12px; font-weight: 600;
+        }
+        .history-list {
+            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
+        }
+        .history-list::-webkit-scrollbar { height: 4px; }
+        .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .history-chip {
+            flex-shrink: 0; padding: 10px 14px; border-radius: 10px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            font-size: 0.7rem; min-width: 160px;
+        }
+        .chip-amount { font-weight: 700; font-size: 0.85rem; }
+        .chip-detail { color: var(--text-dim); margin-top: 3px; }
+        .chip-status { margin-top: 4px; font-weight: 700; font-size: 0.65rem; text-transform: uppercase; }
+
+        .flagged-banner {
+            padding: 10px 16px; border-radius: 10px; margin-top: 12px;
+            font-size: 0.75rem; font-weight: 600; display: none;
+        }
+        .flagged-banner.active {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .flagged-banner.scammer {
+            background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,42,85,0.3);
+        }
+        .flagged-banner.potential {
+            background: var(--orange-dim); color: var(--orange); border: 1px solid rgba(255,170,0,0.3);
         }
 
-        .status-badge {
-            display: inline-block;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .profile-selector {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--surface-2);
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
         }
-
-        .status-safe {
-            color: var(--success-accent);
-            background: rgba(0, 255, 115, 0.1);
-            border: 1px solid rgba(0, 255, 115, 0.3);
-            text-shadow: 0 0 10px rgba(0, 255, 115, 0.5);
+        .profile-selector label {
+            margin-bottom: 0;
+            white-space: nowrap;
         }
-
-        .status-warning {
-            color: var(--warning-accent);
-            background: rgba(255, 170, 0, 0.1);
-            border: 1px solid rgba(255, 170, 0, 0.3);
-            text-shadow: 0 0 10px rgba(255, 170, 0, 0.5);
-        }
-
-        .status-danger {
-            color: var(--danger-accent);
-            background: rgba(255, 42, 85, 0.1);
-            border: 1px solid rgba(255, 42, 85, 0.3);
-            text-shadow: 0 0 10px rgba(255, 42, 85, 0.5);
-        }
-
-        .loader {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(255ంటే,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
-            display: none;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        .profile-selector select {
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            background: rgba(0,0,0,0.5);
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <header>
-            <h1>Zero-Trust Edge Simulator</h1>
-            <p class="subtitle">ONNX Runtime WebAssembly Inference</p>
-        </header>
+<!-- ─── TOP BAR ─── -->
+<div class="topbar">
+    <h1>Zero-Trust Edge Simulator</h1>
+    <div class="model-status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusLabel">LOADING...</span>
+    </div>
+</div>
 
-        <div class="form-group">
-            <label for="txnType">Transaction Type</label>
+<!-- ─── APP ─── -->
+<div class="app">
+
+    <!-- ────── LEFT: SENDER ────── -->
+    <div class="person-card" id="senderCard">
+        <div class="card-header">
+            <div class="avatar sender">S</div>
+            <div>
+                <div class="card-title">Sender</div>
+                <div class="card-name" id="senderDisplayName">Ahmad</div>
+            </div>
+        </div>
+
+        <div class="profile-selector">
+            <label>Quick Profile:</label>
+            <select onchange="applyProfile('sender', this.value)">
+                <option value="custom">-- Custom --</option>
+                <option value="child">Child (Age 12)</option>
+                <option value="adult">Adult (Age 35)</option>
+                <option value="elderly">Elderly (Age 72)</option>
+                <option value="suspicious">Suspicious Account (Alert)</option>
+                <option value="potential">Potential Scammer</option>
+                <option value="scammer">Confirmed Scammer</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <div class="field">
+                <label for="senderName">Name</label>
+                <input type="text" id="senderName" value="Ahmad" oninput="document.getElementById('senderDisplayName').textContent=this.value">
+            </div>
+            <div class="field">
+                <label for="senderAge">Age</label>
+                <input type="number" id="senderAge" value="30" min="10" max="100">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="field">
+                <label for="senderBalance">Balance (RM)</label>
+                <input type="number" id="senderBalance" value="15000" min="0" step="100">
+            </div>
+            <div class="field">
+                <label for="senderAccAge">Account Age (days)</label>
+                <input type="number" id="senderAccAge" value="365" min="1">
+            </div>
+        </div>
+
+        <div class="balance-display">
+            <div class="balance-label">Available Balance</div>
+            <div class="balance-value" id="senderBalanceDisplay">RM 15,000</div>
+            <div class="category-tag" id="senderCategoryTag" style="background:var(--cyan-dim);color:var(--cyan);">ADULT</div>
+        </div>
+
+        <div class="flagged-banner" id="senderFlagged">
+            <span>ACCOUNT FLAGGED:</span>
+            <span id="senderFlagReason"></span>
+        </div>
+    </div>
+
+    <!-- ────── CENTRE: TRANSFER ────── -->
+    <div class="transfer-panel">
+        <div class="arrow-line"></div>
+
+        <div class="txn-field">
+            <label for="txnType">Type</label>
             <select id="txnType">
-                <option value="TRANSFER">TRANSFER (High Risk)</option>
-                <option value="PAYMENT">PAYMENT (Standard)</option>
+                <option value="TRANSFER">TRANSFER</option>
+                <option value="PAYMENT">PAYMENT</option>
                 <option value="CASH_OUT">CASH_OUT</option>
                 <option value="CASH_IN">CASH_IN</option>
                 <option value="DEBIT">DEBIT</option>
             </select>
         </div>
 
-        <div class="form-group">
-            <label for="amount">Transfer Amount (RM)</label>
-            <input type="number" id="amount" value="5000" min="0" step="100">
+        <div class="txn-field">
+            <label for="txnAmount">Amount (RM)</label>
+            <input type="number" id="txnAmount" value="250" min="0" step="50">
         </div>
 
-        <div class="form-group">
-            <label for="balance">Sender Current Balance (RM)</label>
-            <input type="number" id="balance" value="5000" min="0" step="100">
+        <div class="txn-field">
+            <label for="txnHour">Hour (0-23)</label>
+            <input type="number" id="txnHour" value="14" min="0" max="23">
         </div>
 
-        <button id="runBtn">
-            <span class="btn-text">EVALUATE RISk</span>
-            <div class="loader" id="loader"></div>
-        </button>
+        <button class="send-btn" id="sendBtn" disabled>LOADING MODEL...</button>
 
-        <div id="resultPanel">
-            <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">AI Verification</p>
-            <div class="score-display" id="probabilityText">0.00%</div>
-            <div class="status-badge" id="statusBadge">ANALYZING...</div>
+        <div class="txn-counter" id="txnCounter">0 transactions this session</div>
+
+        <div class="arrow-line"></div>
+    </div>
+
+    <!-- ────── RIGHT: RECEIVER ────── -->
+    <div class="person-card" id="receiverCard">
+        <div class="card-header">
+            <div class="avatar receiver">R</div>
+            <div>
+                <div class="card-title">Receiver</div>
+                <div class="card-name" id="receiverDisplayName">Mr. Loy</div>
+            </div>
+        </div>
+
+        <div class="profile-selector">
+            <label>Quick Profile:</label>
+            <select onchange="applyProfile('receiver', this.value)">
+                <option value="custom">-- Custom --</option>
+                <option value="child">Child</option>
+                <option value="adult">Adult</option>
+                <option value="elderly">Elderly</option>
+                <option value="suspicious">Suspicious Entity</option>
+                <option value="potential">Potential Scammer</option>
+                <option value="scammer">Scammer Entity</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <div class="field">
+                <label for="receiverName">Name</label>
+                <input type="text" id="receiverName" value="Mr. Loy" oninput="document.getElementById('receiverDisplayName').textContent=this.value">
+            </div>
+            <div class="field">
+                <label for="receiverAge">Age</label>
+                <input type="number" id="receiverAge" value="35" min="10" max="100">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="field">
+                <label for="receiverBalance">Balance (RM)</label>
+                <input type="number" id="receiverBalance" value="8000" min="0" step="100">
+            </div>
+            <div class="field">
+                <label for="receiverAccAge">Account Age (days)</label>
+                <input type="number" id="receiverAccAge" value="200" min="1">
+            </div>
+        </div>
+
+        <div class="balance-display">
+            <div class="balance-label">Available Balance</div>
+            <div class="balance-value" id="receiverBalanceDisplay">RM 8,000</div>
+            <div class="category-tag" id="receiverCategoryTag" style="background:var(--cyan-dim);color:var(--cyan);">ADULT</div>
+        </div>
+
+        <div class="flagged-banner" id="receiverFlagged">
+            <span>ACCOUNT FLAGGED:</span>
+            <span id="receiverFlagReason"></span>
         </div>
     </div>
 
-    <script>
-        // Set path to ONNX model.
-        // Needs a local server (e.g. `python -m http.server`) from root.
-        const MODEL_URL = '../ai_engine/models/fraud_detection_model.onnx';
-        let session = null;
+    <!-- ────── RESULT STRIP ────── -->
+    <div class="result-strip" id="resultStrip">
+        <div class="result-header">
+            <span class="result-title">Fraud Detection Engine - Compliance Report</span>
+            <span class="result-verdict" id="resultVerdict">ALLOWED</span>
+        </div>
 
-        const TYPE_ENCODING = {
-            "CASH_IN": 0,
-            "CASH_OUT": 1,
-            "DEBIT": 2,
-            "PAYMENT": 3,
-            "TRANSFER": 4
+        <div class="result-grid">
+            <div class="result-metric">
+                <div class="metric-label">AI Fraud Score</div>
+                <div class="metric-value" id="metricAI">0.00%</div>
+            </div>
+            <div class="result-metric">
+                <div class="metric-label">Risk Level</div>
+                <div class="metric-value" id="metricRisk">SAFE</div>
+            </div>
+            <div class="result-metric">
+                <div class="metric-label">Sender Category</div>
+                <div class="metric-value" id="metricCategory">ADULT</div>
+            </div>
+            <div class="result-metric">
+                <div class="metric-label">Scammer DB Match</div>
+                <div class="metric-value" id="metricScammer">No</div>
+            </div>
+        </div>
+
+        <div class="compliance-log" id="complianceLog">
+            <div class="log-title">Compliance Log (White-Box Audit Trail)</div>
+        </div>
+    </div>
+
+    <!-- ────── HISTORY STRIP ────── -->
+    <div class="history-strip">
+        <div class="history-title">Transaction History (this session)</div>
+        <div class="history-list" id="historyList">
+            <div class="history-chip" style="color:var(--text-dim); border-style:dashed;">No transactions yet. Run a transfer to see history build up.</div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ==========================================================================
+//  STATE
+// ==========================================================================
+const MODEL_URL = '../ai_engine/models/fraud_detection_model.onnx?v=' + Date.now();
+let session = null;
+let txnCount = 0;
+
+// Transaction history for velocity + self-evaluation
+// Each entry: { senderId, senderName, senderAge, receiverId, receiverName, amount, hour, timestamp, blocked }
+const txnHistory = [];
+
+// Flagged accounts: { id -> { category, reason } }
+const flaggedAccounts = {};
+
+const TYPE_ENCODING = { CASH_IN:0, CASH_OUT:1, DEBIT:2, PAYMENT:3, TRANSFER:4 };
+
+// Known scammer names (partial match from SC Investor Alert List)
+const SCAMMER_NAMES = [
+    "ethtrade", "bitcoin revolution", "mface", "jjptr", "richway global",
+    "era consumer", "public gold", "change your life", "oil asia",
+    "cgl global", "mbi international", "skim cepat kaya", "macrokiosk"
+];
+
+// ==========================================================================
+//  INIT
+// ==========================================================================
+const sendBtn = document.getElementById('sendBtn');
+const statusDot = document.getElementById('statusDot');
+const statusLabel = document.getElementById('statusLabel');
+
+async function init() {
+    if (window.location.protocol === "file:") {
+        alert("Please open via http://localhost:8000/web_test");
+        return;
+    }
+    try {
+        ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
+        session = await ort.InferenceSession.create(MODEL_URL);
+        statusDot.classList.add('live');
+        statusLabel.textContent = "ONNX MODEL LOADED";
+        sendBtn.textContent = "SEND TRANSFER";
+        sendBtn.disabled = false;
+    } catch (e) {
+        console.error("ONNX Error:", e);
+        statusDot.classList.add('error');
+        statusLabel.textContent = "MODEL LOAD FAILED";
+        sendBtn.textContent = "MODEL ERROR";
+    }
+}
+
+// ==========================================================================
+//  BALANCE DISPLAY SYNC
+// ==========================================================================
+function fmtRM(n) { return "RM " + Number(n).toLocaleString('en-MY'); }
+
+document.getElementById('senderBalance').addEventListener('input', function() {
+    document.getElementById('senderBalanceDisplay').textContent = fmtRM(this.value);
+});
+document.getElementById('receiverBalance').addEventListener('input', function() {
+    document.getElementById('receiverBalanceDisplay').textContent = fmtRM(this.value);
+});
+
+// ==========================================================================
+//  PROFILE DATA
+// ==========================================================================
+const PROFILES = {
+    child: { name: "Xiao Ming", age: 12, balance: 150, accAge: 30, forceCat: "CHILD" },
+    adult: { name: "Siti Rahmah", age: 35, balance: 12500, accAge: 1200, forceCat: "ADULT" },
+    elderly: { name: "Uncle Tan", age: 75, balance: 85000, accAge: 4500, forceCat: "ELDERLY" },
+    suspicious: { name: "Zul K.", age: 28, balance: 3500, accAge: 45, forceCat: "SUSPICIOUS" },
+    potential: { name: "Lim Tech", age: 42, balance: 1200, accAge: 15, forceCat: "POTENTIAL_SCAMMER" },
+    scammer: { name: "Ethtrade Global", age: 25, balance: 50, accAge: 5, forceCat: "SCAMMER" }
+};
+
+function applyProfile(side, profileKey) {
+    if (profileKey === "custom") return;
+    const p = PROFILES[profileKey];
+    if (!p) return;
+
+    const id = side + "_" + p.name.toLowerCase().replace(/\s/g,'_');
+    
+    // Clear old flags if any
+    delete flaggedAccounts[id];
+
+    // If it's a forced category (like scammer), inject into flagged state immediately
+    if (p.forceCat === "SCAMMER" || p.forceCat === "POTENTIAL_SCAMMER" || p.forceCat === "SUSPICIOUS") {
+        flaggedAccounts[id] = {
+            category: p.forceCat,
+            reason: `Manual profile simulation: ${p.forceCat}`
         };
+    }
 
-        const runBtn = document.getElementById('runBtn');
-        const btnText = document.querySelector('.btn-text');
-        const loader = document.getElementById('loader');
-        const resultPanel = document.getElementById('resultPanel');
-        const probabilityText = document.getElementById('probabilityText');
-        const statusBadge = document.getElementById('statusBadge');
+    document.getElementById(`${side}Name`).value = p.name;
+    document.getElementById(`${side}Age`).value = p.age;
+    document.getElementById(`${side}Balance`).value = p.balance;
+    document.getElementById(`${side}AccAge`).value = p.accAge;
 
-        async function initModel() {
-            try {
-                // Pre-load ONNX Session
-                btnText.textContent = "LOADING NEURAL ENGINE...";
-                runBtn.disabled = true;
-                
-                // Initialize ONNX Web without throwing CORS if served properly
-                session = await ort.InferenceSession.create(MODEL_URL);
-                
-                btnText.textContent = "EVALUATE RISK LOCALLY (0ms)";
-                runBtn.disabled = false;
-            } catch (e) {
-                console.error("ONNX Initialization Failed: ", e);
-                btnText.textContent = "MODEL LOAD ERROR";
-                alert("Failed to load model. Ensure you are running a local HTTP server (e.g. `python -m http.server` in the repository root) to bypass CORS restrictions.");
-            }
+    // Trigger sync events
+    document.getElementById(`${side}DisplayName`).textContent = p.name;
+    document.getElementById(`${side}BalanceDisplay`).textContent = fmtRM(p.balance);
+    
+    // Update visuals immediately
+    const senderId = "sender_" + document.getElementById('senderName').value.toLowerCase().replace(/\s/g,'_');
+    const sAge = parseInt(document.getElementById('senderAge').value);
+    const receiverId = "receiver_" + document.getElementById('receiverName').value.toLowerCase().replace(/\s/g,'_');
+    const rAge = parseInt(document.getElementById('receiverAge').value);
+    
+    updateCategoryTags(senderId, sAge, receiverId, rAge);
+}
+
+// ==========================================================================
+//  SELF-EVALUATION ENGINE (mirrors Python SelfEvaluationEngine)
+// ==========================================================================
+function categoriseUser(id, age) {
+    // Check if already flagged
+    if (flaggedAccounts[id]) return flaggedAccounts[id].category;
+    if (age < 18) return "CHILD";
+    if (age >= 60) return "ELDERLY";
+    return "ADULT";
+}
+
+function selfEvaluateReceiver(receiverId) {
+    // Count how many high-value (>= RM 1000) transfers from elderly (age >= 60) the receiver got
+    let elderlyHighValueCount = 0;
+    const now = Date.now();
+    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+
+    for (const txn of txnHistory) {
+        if (txn.receiverId === receiverId
+            && txn.senderAge >= 60
+            && txn.amount >= 1000
+            && (now - txn.timestamp) <= sevenDays) {
+            elderlyHighValueCount++;
         }
+    }
 
-        async function evaluateFraud() {
-            if (!session) return;
-            
-            // UI State updates
-            btnText.style.display = "none";
-            loader.style.display = "inline-block";
-            runBtn.disabled = true;
-            resultPanel.classList.remove('visible');
+    if (elderlyHighValueCount >= 3) {
+        flaggedAccounts[receiverId] = {
+            category: "SCAMMER",
+            reason: `Received ${elderlyHighValueCount} high-value transfers (>= RM 1000) from elderly users in the past 7 days`
+        };
+        return "SCAMMER";
+    } else if (elderlyHighValueCount >= 2) {
+        flaggedAccounts[receiverId] = {
+            category: "POTENTIAL_SCAMMER",
+            reason: `Received ${elderlyHighValueCount} high-value transfers from elderly users - under monitoring`
+        };
+        return "POTENTIAL_SCAMMER";
+    }
+    return null; // no escalation
+}
 
-            // Gather inputs
-            const typeStr = document.getElementById('txnType').value;
-            const amount = parseFloat(document.getElementById('amount').value);
-            const balance = parseFloat(document.getElementById('balance').value);
-            
-            // Feature construction matching `test_onnx_inference.py` behavior:
-            // [type, amount, oldbalanceOrg, newbalanceOrig, oldbalanceDest, newbalanceDest]
-            const encodedType = TYPE_ENCODING[typeStr] || 4;
-            const newBalanceOrig = Math.max(0, balance - amount);
-            const oldBalanceDest = 0.0;
-            const newBalanceDest = amount; // Approximation for blind relay
+function getCategoryStyle(cat) {
+    switch(cat) {
+        case "CHILD": return { bg: "var(--purple)", color: "#fff", dim: "rgba(167,139,250,0.15)" };
+        case "ELDERLY": return { bg: "var(--orange)", color: "#000", dim: "var(--orange-dim)" };
+        case "SCAMMER": return { bg: "var(--red)", color: "#fff", dim: "var(--red-dim)" };
+        case "POTENTIAL_SCAMMER": return { bg: "var(--orange)", color: "#000", dim: "var(--orange-dim)" };
+        case "SUSPICIOUS": return { bg: "#fcd34d", color: "#000", dim: "rgba(252,211,77,0.15)" };
+        default: return { bg: "var(--cyan)", color: "#000", dim: "var(--cyan-dim)" };
+    }
+}
 
-            const inputFeatures = Float32Array.from([
-                encodedType, 
-                amount, 
-                balance, 
-                newBalanceOrig, 
-                oldBalanceDest, 
-                newBalanceDest
-            ]);
+function getPolicy(category) {
+    const policies = {
+        CHILD:             { max_single: 200,   blocked_hours: [0,1,2,3,4,5] },
+        ELDERLY:           { max_single: 5000,  blocked_hours: [0,1,2,3,4] },
+        ADULT:             { max_single: 50000, blocked_hours: [] },
+        SUSPICIOUS:        { max_single: 1000,  blocked_hours: [0,1,2,3,4,5] },
+        POTENTIAL_SCAMMER: { max_single: 500,   blocked_hours: [0,1,2,3,4,5,6,7] },
+        SCAMMER:           { max_single: 0,     blocked_hours: Array.from({length:24},(_,i)=>i) },
+    };
+    return policies[category] || policies.ADULT;
+}
 
-            try {
-                // Tensor creation
-                const tensor = new ort.Tensor('float32', inputFeatures, [1, 6]);
-                const inputName = session.inputNames[0];
-                const feeds = {};
-                feeds[inputName] = tensor;
+// ==========================================================================
+//  MAIN EVALUATION
+// ==========================================================================
+async function runTransfer() {
+    if (!session) return;
+    sendBtn.disabled = true;
+    sendBtn.textContent = "EVALUATING...";
 
-                // Edge Inference Execution
-                const results = await session.run(feeds);
-                const outputName = session.outputNames[0];
-                const probability = results[outputName].data[0];
+    // Read inputs
+    const sName = document.getElementById('senderName').value.trim();
+    const sAge  = parseInt(document.getElementById('senderAge').value);
+    const sBal  = parseFloat(document.getElementById('senderBalance').value);
+    const sAccAge = parseInt(document.getElementById('senderAccAge').value);
+    const rName = document.getElementById('receiverName').value.trim();
+    const rAge  = parseInt(document.getElementById('receiverAge').value);
+    const rBal  = parseFloat(document.getElementById('receiverBalance').value);
+    const amount = parseFloat(document.getElementById('txnAmount').value);
+    const hour   = parseInt(document.getElementById('txnHour').value);
+    const txnType = document.getElementById('txnType').value;
 
-                updateUI(probability, amount, balance);
+    const senderId = "sender_" + sName.toLowerCase().replace(/\s/g,'_');
+    const receiverId = "receiver_" + rName.toLowerCase().replace(/\s/g,'_');
 
-            } catch (err) {
-                console.error("Inference Error:", err);
-                alert("Inference Failed. See console logs.");
-            } finally {
-                btnText.style.display = "inline-block";
-                loader.style.display = "none";
-                runBtn.disabled = false;
-            }
+    // ── Self-Evaluation ──
+    let senderCategory = categoriseUser(senderId, sAge);
+    let receiverEscalation = selfEvaluateReceiver(receiverId);
+
+    // If sender is flagged, override
+    if (flaggedAccounts[senderId]) {
+        senderCategory = flaggedAccounts[senderId].category;
+    }
+
+    const policy = getPolicy(senderCategory);
+    const logs = [];
+    let blocked = false;
+    let riskLevel = "SAFE";
+    let scammerMatch = false;
+
+    // ── Rule 0: Scammer DB ──
+    const rNameLower = rName.toLowerCase();
+    for (const s of SCAMMER_NAMES) {
+        if (rNameLower.includes(s)) {
+            scammerMatch = true;
+            logs.push({ rule: "SCAMMER_DATABASE_HIT", desc: `Receiver matches SC Investor Alert List: '${rName}'`, boundary: "scammer_database=DENY_ALL", actual: `receiver='${rName}'`, result: "FAIL", action: "BLOCK" });
+            blocked = true; riskLevel = "BLOCKED";
+            break;
         }
+    }
 
-        function updateUI(prob, amount, balance) {
-            const pct = (prob * 100).toFixed(2);
-            probabilityText.textContent = `${pct}%`;
-            
-            // Reset badge classes
-            statusBadge.className = 'status-badge';
-            
-            if (prob > 0.5 || (amount >= balance && amount > 1000)) {
-                // Emojis removed, pure styled ascii text
-                statusBadge.textContent = "FRAUD DETECTED (BLOCKED)";
-                statusBadge.classList.add('status-danger');
-                probabilityText.style.color = "var(--danger-accent)";
-            } else if (prob > 0.3) {
-                statusBadge.textContent = "ANOMALOUS (WARNING)";
-                statusBadge.classList.add('status-warning');
-                probabilityText.style.color = "var(--warning-accent)";
-            } else {
-                statusBadge.textContent = "CLEAN (ALLOWED)";
-                statusBadge.classList.add('status-safe');
-                probabilityText.style.color = "var(--text-main)";
-            }
+    // ── Rule 1: Velocity ──
+    const now = Date.now();
+    const recentLarge = txnHistory.filter(t => t.senderId === senderId && t.amount >= 1000 && (now - t.timestamp) < 24*60*60*1000);
+    if (recentLarge.length >= 2 && amount >= 1000) {
+        logs.push({ rule: "HIGH_STAKE_VELOCITY", desc: `3+ transfers > RM 1000 in 24 hours`, boundary: "max_count=2, min_amount=1000, window=24h", actual: `count=${recentLarge.length+1}`, result: "FAIL", action: "BLOCK" });
+        blocked = true; riskLevel = "BLOCKED";
+    }
 
-            resultPanel.classList.add('visible');
+    // ── Rule 2: Time Anomaly ──
+    if (policy.blocked_hours.includes(hour)) {
+        const severity = ["ELDERLY","CHILD","SCAMMER"].includes(senderCategory) ? "BLOCK" : "WARN";
+        logs.push({ rule: "TIME_ANOMALY", desc: `Transaction at ${hour}:00 for ${senderCategory} account`, boundary: `blocked_hours=[${policy.blocked_hours.join(',')}]`, actual: `hour=${hour}`, result: "FAIL", action: severity });
+        if (severity === "BLOCK") { blocked = true; riskLevel = "BLOCKED"; }
+        else { riskLevel = "MEDIUM"; }
+    }
+
+    // ── Rule 3: Balance Drain ──
+    const balRatio = amount / Math.max(sBal, 0.01);
+    if (balRatio > 0.8 && senderCategory === "ELDERLY") {
+        logs.push({ rule: "ELDERLY_BALANCE_DRAIN", desc: `Elderly transferring ${(balRatio*100).toFixed(0)}% of balance`, boundary: "max_ratio=0.80", actual: `ratio=${balRatio.toFixed(2)}`, result: "FAIL", action: "BLOCK" });
+        blocked = true; riskLevel = "BLOCKED";
+    } else if (balRatio > 0.9) {
+        logs.push({ rule: "BALANCE_DRAIN", desc: `Transferring ${(balRatio*100).toFixed(0)}% of total balance`, boundary: "max_ratio=0.90", actual: `ratio=${balRatio.toFixed(2)}`, result: "FAIL", action: "WARN" });
+        riskLevel = riskLevel === "SAFE" ? "HIGH" : riskLevel;
+    }
+
+    // ── Rule 4: Transfer Limit ──
+    if (amount > policy.max_single) {
+        logs.push({ rule: "SINGLE_TRANSFER_LIMIT", desc: `Exceeds ${senderCategory} limit of RM ${policy.max_single}`, boundary: `max=RM ${policy.max_single}`, actual: `amount=RM ${amount}`, result: "FAIL", action: "BLOCK" });
+        blocked = true; riskLevel = "BLOCKED";
+    }
+
+    // ── Rule 5: Frozen Account ──
+    if (senderCategory === "SCAMMER") {
+        logs.push({ rule: "SCAMMER_ACCOUNT_FREEZE", desc: `Account is FROZEN - classified as SCAMMER`, boundary: "status=FROZEN", actual: `category=${senderCategory}, reason=${flaggedAccounts[senderId]?.reason || 'flagged'}`, result: "FAIL", action: "BLOCK" });
+        blocked = true; riskLevel = "BLOCKED";
+    }
+
+    // ── Rule 6: Insufficient Funds ──
+    if (amount > sBal) {
+        logs.push({ rule: "INSUFFICIENT_FUNDS", desc: "Transfer amount exceeds available balance", boundary: `balance=RM ${sBal}`, actual: `amount=RM ${amount}`, result: "FAIL", action: "BLOCK" });
+        blocked = true; riskLevel = "BLOCKED";
+    }
+
+    // ── ONNX Neural Network ──
+    let onnxProb = 0;
+    try {
+        const encoded = TYPE_ENCODING[txnType] || 4;
+        const newBal = Math.max(0, sBal - amount);
+        const features = Float32Array.from([encoded, amount, sBal, newBal, 0, amount]);
+        const tensor = new ort.Tensor('float32', features, [1,6]);
+        const feeds = {}; feeds[session.inputNames[0]] = tensor;
+        const results = await session.run(feeds);
+        onnxProb = results[session.outputNames[0]].data[0];
+
+        if (onnxProb > 0.5) {
+            logs.push({ rule: "ONNX_NEURAL_NETWORK", desc: `AI detected fraud probability of ${(onnxProb*100).toFixed(2)}%`, boundary: "threshold=50%", actual: `probability=${(onnxProb*100).toFixed(2)}%`, result: "FAIL", action: "BLOCK" });
+            blocked = true; riskLevel = "BLOCKED";
         }
+    } catch(e) { console.error("ONNX inference error:", e); }
 
-        runBtn.addEventListener('click', evaluateFraud);
+    // If no rules triggered
+    if (logs.length === 0) {
+        logs.push({ rule: "ALL_RULES_PASSED", desc: "Transaction passed all deterministic rule checks", boundary: "N/A", actual: "N/A", result: "PASS", action: "ALLOW" });
+    }
 
-        // Bootstrap on load
-        window.addEventListener('load', initModel);
+    // ── Record Transaction ──
+    txnHistory.push({
+        senderId, senderName: sName, senderAge: sAge,
+        receiverId, receiverName: rName,
+        amount, hour, timestamp: Date.now(), blocked
+    });
+    txnCount++;
 
-    </script>
+    // ── Update Balances if allowed ──
+    if (!blocked) {
+        const newSenderBal = sBal - amount;
+        const newReceiverBal = rBal + amount;
+        document.getElementById('senderBalance').value = newSenderBal;
+        document.getElementById('senderBalanceDisplay').textContent = fmtRM(newSenderBal);
+        document.getElementById('receiverBalance').value = newReceiverBal;
+        document.getElementById('receiverBalanceDisplay').textContent = fmtRM(newReceiverBal);
+    }
+
+    // ── Re-evaluate receiver after this transaction ──
+    selfEvaluateReceiver(receiverId);
+
+    // ── UPDATE UI ──
+    updateCategoryTags(senderId, sAge, receiverId, rAge);
+    renderResult(blocked, riskLevel, onnxProb, senderCategory, scammerMatch, logs);
+    renderHistory();
+
+    document.getElementById('txnCounter').textContent = `${txnCount} transaction${txnCount>1?'s':''} this session`;
+    sendBtn.disabled = false;
+    sendBtn.textContent = "SEND TRANSFER";
+}
+
+// ==========================================================================
+//  UI RENDERING
+// ==========================================================================
+function updateCategoryTags(senderId, sAge, receiverId, rAge) {
+    const sCat = flaggedAccounts[senderId]?.category || categoriseUser(senderId, sAge);
+    const rCat = flaggedAccounts[receiverId]?.category || categoriseUser(receiverId, rAge);
+
+    const sStyle = getCategoryStyle(sCat);
+    const sTag = document.getElementById('senderCategoryTag');
+    sTag.textContent = sCat;
+    sTag.style.background = sStyle.dim;
+    sTag.style.color = sStyle.bg;
+
+    const rStyle = getCategoryStyle(rCat);
+    const rTag = document.getElementById('receiverCategoryTag');
+    rTag.textContent = rCat;
+    rTag.style.background = rStyle.dim;
+    rTag.style.color = rStyle.bg;
+
+    // Show flagged banners
+    const sFlagged = document.getElementById('senderFlagged');
+    if (flaggedAccounts[senderId]) {
+        sFlagged.classList.add('active', flaggedAccounts[senderId].category === 'SCAMMER' ? 'scammer' : 'potential');
+        document.getElementById('senderFlagReason').textContent = flaggedAccounts[senderId].reason;
+    } else { sFlagged.classList.remove('active','scammer','potential'); }
+
+    const rFlagged = document.getElementById('receiverFlagged');
+    if (flaggedAccounts[receiverId]) {
+        rFlagged.classList.add('active', flaggedAccounts[receiverId].category === 'SCAMMER' ? 'scammer' : 'potential');
+        document.getElementById('receiverFlagReason').textContent = flaggedAccounts[receiverId].reason;
+    } else { rFlagged.classList.remove('active','scammer','potential'); }
+}
+
+function renderResult(blocked, riskLevel, onnxProb, senderCategory, scammerMatch, logs) {
+    const strip = document.getElementById('resultStrip');
+    strip.classList.add('visible');
+
+    const verdict = document.getElementById('resultVerdict');
+    verdict.className = 'result-verdict';
+    if (blocked) {
+        verdict.textContent = "BLOCKED";
+        verdict.classList.add('verdict-blocked');
+    } else if (riskLevel === "HIGH" || riskLevel === "MEDIUM") {
+        verdict.textContent = "ALLOWED (WARNING)";
+        verdict.classList.add('verdict-warning');
+    } else {
+        verdict.textContent = "ALLOWED";
+        verdict.classList.add('verdict-allowed');
+    }
+
+    document.getElementById('metricAI').textContent = (onnxProb * 100).toFixed(2) + '%';
+    document.getElementById('metricRisk').textContent = riskLevel;
+    document.getElementById('metricCategory').textContent = senderCategory;
+    document.getElementById('metricScammer').textContent = scammerMatch ? "YES - MATCH" : "No";
+    document.getElementById('metricScammer').style.color = scammerMatch ? "var(--red)" : "var(--text)";
+
+    // Render compliance logs
+    const logContainer = document.getElementById('complianceLog');
+    logContainer.innerHTML = '<div class="log-title">Compliance Log (White-Box Audit Trail)</div>';
+    for (const log of logs) {
+        const cls = log.action === "ALLOW" || log.result === "PASS" ? "pass" : log.action === "WARN" ? "warn" : "fail";
+        logContainer.innerHTML += `
+            <div class="log-entry ${cls}">
+                <span class="log-key">Rule:</span> <span class="log-val">${log.rule}</span><br>
+                <span class="log-key">Description:</span> <span class="log-val">${log.desc}</span><br>
+                <span class="log-key">Boundary:</span> <span class="log-val">${log.boundary}</span><br>
+                <span class="log-key">Actual:</span> <span class="log-val">${log.actual}</span><br>
+                <span class="log-key">Result:</span> <span class="log-val">${log.result} -> ${log.action}</span>
+            </div>`;
+    }
+}
+
+function renderHistory() {
+    const list = document.getElementById('historyList');
+    list.innerHTML = '';
+    for (let i = txnHistory.length - 1; i >= 0; i--) {
+        const t = txnHistory[i];
+        const chip = document.createElement('div');
+        chip.className = 'history-chip';
+        chip.innerHTML = `
+            <div class="chip-amount">${fmtRM(t.amount)}</div>
+            <div class="chip-detail">${t.senderName} (${t.senderAge}y) -> ${t.receiverName}</div>
+            <div class="chip-detail">${t.hour}:00</div>
+            <div class="chip-status" style="color:${t.blocked ? 'var(--red)' : 'var(--green)'}">${t.blocked ? 'BLOCKED' : 'ALLOWED'}</div>`;
+        list.appendChild(chip);
+    }
+}
+
+// ==========================================================================
+//  BOOT
+// ==========================================================================
+sendBtn.addEventListener('click', runTransfer);
+window.addEventListener('load', init);
+</script>
 </body>
 </html>
