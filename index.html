@@ -1121,11 +1121,9 @@ window.addEventListener('load', init);
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.14.0';
 
     env.allowLocalModels = true;
-    env.allowRemoteModels = true; 
-    
-    // Attempt local first using http server
-    env.remoteHost = window.location.origin + '/public/ai_engine/models/';
-    env.remotePathTemplate = '{model}/{file}';
+    env.allowRemoteModels = false;
+    // Set the path to where our models are hosted locally on the python server
+    env.localModelPath = '/public/ai_engine/models/';
 
     const micBtn = document.getElementById('micBtn');
     const voiceStatus = document.getElementById('voiceStatus');
