@@ -409,6 +409,7 @@
                 <option value="suspicious">Suspicious Entity</option>
                 <option value="potential">Potential Scammer</option>
                 <option value="scammer">Scammer Entity</option>
+                <option value="illegal_company">Illegal Corp (SC Alert List)</option>
             </select>
         </div>
 
@@ -504,7 +505,7 @@ const flaggedAccounts = {};
 const TYPE_ENCODING = { CASH_IN:0, CASH_OUT:1, DEBIT:2, PAYMENT:3, TRANSFER:4 };
 
 // Known scammer names (partial match from SC Investor Alert List)
-const SCAMMER_NAMES = [
+let SCAMMER_NAMES = [
     "ethtrade", "bitcoin revolution", "mface", "jjptr", "richway global",
     "era consumer", "public gold", "change your life", "oil asia",
     "cgl global", "mbi international", "skim cepat kaya", "macrokiosk"
@@ -522,6 +523,22 @@ async function init() {
         alert("Please open via http://localhost:8000/web_test");
         return;
     }
+    
+    // Asynchronously load the official Scammer Database
+    fetch('./public/ai_engine/data/CLEAN_investor_alert_list.csv')
+        .then(res => res.text())
+        .then(csv => {
+            const lines = csv.split('\n').filter(l => l.trim().length > 0);
+            for(let i = 1; i < lines.length; i++) {
+                // simple csv split by comma (ignoring quotes for simplicity of names)
+                const name = lines[i].split(',')[0].toLowerCase().trim();
+                if(name && !SCAMMER_NAMES.includes(name)) {
+                    SCAMMER_NAMES.push(name);
+                }
+            }
+            console.log("Loaded " + SCAMMER_NAMES.length + " official flagged entities.");
+        }).catch(err => console.error("Could not load scammer list:", err));
+
     try {
         ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/";
         session = await ort.InferenceSession.create(MODEL_URL);
@@ -558,7 +575,8 @@ const PROFILES = {
     elderly: { name: "Uncle Tan", age: 75, balance: 85000, accAge: 4500, forceCat: "ELDERLY" },
     suspicious: { name: "Zul K.", age: 28, balance: 3500, accAge: 45, forceCat: "SUSPICIOUS" },
     potential: { name: "Lim Tech", age: 42, balance: 1200, accAge: 15, forceCat: "POTENTIAL_SCAMMER" },
-    scammer: { name: "Ethtrade Global", age: 25, balance: 50, accAge: 5, forceCat: "SCAMMER" }
+    scammer: { name: "Ethtrade Global", age: 25, balance: 50, accAge: 5, forceCat: "SCAMMER" },
+    illegal_company: { name: "Master Binary", age: 40, balance: 250000, accAge: 120, forceCat: "ADULT" } // Name triggers DB Hit
 };
 
 function applyProfile(side, profileKey) {
