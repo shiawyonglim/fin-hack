@@ -378,6 +378,78 @@
             box-shadow: 0 4px 15px rgba(255,42,85,0.4);
             text-transform: uppercase;
         }
+
+        /* ────── TRANSCRIPT EDIT UI ────── */
+        .transcript-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 3000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .transcript-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .transcript-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 24px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 450px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,229,255,0.15);
+        }
+        .transcript-card h3 {
+            margin-bottom: 12px;
+            color: var(--cyan);
+        }
+        .transcript-card textarea {
+            width: 100%;
+            height: 80px;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 1rem;
+            resize: none;
+            font-family: inherit;
+        }
+        .transcript-card textarea:focus {
+            outline: none;
+            border-color: var(--cyan);
+        }
+        .transcript-actions {
+            display: flex;
+            gap: 12px;
+        }
+        .transcript-actions button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 800;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        .btn-confirm {
+            background: linear-gradient(135deg, var(--cyan), #0077ff);
+            color: #fff;
+        }
+        .btn-cancel {
+            background: rgba(255,42,85,0.15);
+            color: var(--red);
+            border: 1px solid rgba(255,42,85,0.4);
+        }
     </style>
 </head>
 <body>
@@ -589,6 +661,19 @@
     <h2 style="margin-bottom:10px; color:var(--cyan); font-weight:800;">SCAN QR CODE</h2>
     <video id="qrVideo" autoplay playsinline muted></video>
     <button class="close-cam" id="closeCamBtn">CANCEL SCAN</button>
+</div>
+
+<!-- ────── TRANSCRIPT EDIT UI ────── -->
+<div class="transcript-overlay" id="transcriptOverlay">
+    <div class="transcript-card">
+        <h3>Verify Voice Command</h3>
+        <p style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 12px;">Edit the text if the AI misheard you.</p>
+        <textarea id="transcriptText"></textarea>
+        <div class="transcript-actions">
+            <button class="btn-cancel" id="btnCancelTranscript">Cancel</button>
+            <button class="btn-confirm" id="btnConfirmTranscript">Confirm Action</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -1048,6 +1133,11 @@ window.addEventListener('load', init);
     const qrVideo = document.getElementById('qrVideo');
     const closeCamBtn = document.getElementById('closeCamBtn');
 
+    const transcriptOverlay = document.getElementById('transcriptOverlay');
+    const transcriptText = document.getElementById('transcriptText');
+    const btnCancelTranscript = document.getElementById('btnCancelTranscript');
+    const btnConfirmTranscript = document.getElementById('btnConfirmTranscript');
+
     let transcriber = null;
     let mediaRecorder = null;
     let audioChunks = [];
@@ -1071,6 +1161,23 @@ window.addEventListener('load', init);
     // We defer loading whisper until the user interacts to avoid blocking UI thread on load
     // loadWhisper(); 
 
+    function promptTranscriptEdit(text) {
+        voiceStatus.classList.remove('visible');
+        transcriptText.value = text;
+        transcriptOverlay.classList.add('active');
+    }
+
+    btnCancelTranscript.onclick = () => {
+        transcriptOverlay.classList.remove('active');
+        voiceStatus.textContent = "Cancelled";
+        setTimeout(() => voiceStatus.classList.remove('visible'), 2000);
+    };
+
+    btnConfirmTranscript.onclick = () => {
+        transcriptOverlay.classList.remove('active');
+        handleIntent(transcriptText.value);
+    };
+
     async function processAudio(audioBlob) {
         voiceStatus.textContent = "Processing audio...";
         voiceStatus.classList.add('visible');
@@ -1083,7 +1190,7 @@ window.addEventListener('load', init);
             
             if (transcriber) {
                 const output = await transcriber(float32Data, { language: 'en', task: 'transcribe' });
-                handleIntent(output.text);
+                promptTranscriptEdit(output.text);
             } else {
                 throw new Error("Transcriber not loaded");
             }
@@ -1186,13 +1293,13 @@ window.addEventListener('load', init);
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
-            recognition.onresult = (event) => handleIntent(event.results[0][0].transcript);
+            recognition.onresult = (event) => promptTranscriptEdit(event.results[0][0].transcript);
             recognition.start();
         } else {
             // Absolute simulation for restricted web environments
-            voiceStatus.textContent = "Offline Fallback: Pretending you said 'Scan QR'";
+            voiceStatus.textContent = "Offline Fallback: Pretending you said something...";
             voiceStatus.classList.add('visible');
-            setTimeout(() => handleIntent("scan qr code to transfer 250"), 1500);
+            setTimeout(() => promptTranscriptEdit("scan qr code to transfer 250"), 1500);
         }
     }
 </script>
