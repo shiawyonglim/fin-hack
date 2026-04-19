@@ -1125,7 +1125,7 @@ window.addEventListener('load', init);
     
     // Attempt local first using http server
     env.remoteHost = window.location.origin + '/public/ai_engine/models/';
-    env.remotePathTemplate = '{model}/';
+    env.remotePathTemplate = '{model}/{file}';
 
     const micBtn = document.getElementById('micBtn');
     const voiceStatus = document.getElementById('voiceStatus');
@@ -1147,8 +1147,11 @@ window.addEventListener('load', init);
         voiceStatus.textContent = "Loading offline voice AI...";
         voiceStatus.classList.add('visible');
         try {
-            // Attempt to load from the custom offline directory (whisper-tiny-onnx)
-            transcriber = await pipeline('automatic-speech-recognition', 'whisper-tiny-onnx');
+            // Attempt to load from the custom offline directory
+            // We pass quantized: false because our models are raw float32 ONNX
+            transcriber = await pipeline('automatic-speech-recognition', 'whisper-tiny-onnx', {
+                quantized: false,
+            });
             voiceStatus.textContent = "Voice Assistant Ready";
             setTimeout(() => voiceStatus.classList.remove('visible'), 2000);
         } catch (err) {
