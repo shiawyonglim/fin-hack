@@ -3,4 +3,10 @@
 *.json filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
 *.onnx.data filter=lfs diff=lfs merge=lfs -text
+<<<<<<< HEAD
 datasets/ filter=lfs diff=lfs merge=lfs -text
+=======
+=======
+*.csv filter=lfs diff=lfs merge=lfs -text
+>>>>>>> 09c69d6 (uploading raw datasets)
+>>>>>>> origin/main
