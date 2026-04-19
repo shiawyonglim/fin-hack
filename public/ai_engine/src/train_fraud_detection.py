@@ -3,25 +3,41 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.metrics import classification_report
 import os
 
 print("Loading dataset...")
 # Load only a subset to save time during the hackathon / fast prototyping
-df = pd.read_csv(os.path.join(os.path.dirname(__file__), '../data/paysim_database.csv'), nrows=500000)
+df = pd.read_csv(os.path.join(os.path.dirname(__file__), '../data/paysim_database.csv'), nrows=700000)
 
-print("Preprocessing data...")
-# Drop columns that are not useful for the simple NN or are strings
-# 'nameOrig', 'nameDest' are IDs, 'isFlaggedFraud' is a naive system flag
-df = df.drop(columns=['step', 'nameOrig', 'nameDest', 'isFlaggedFraud'])
+print("Feature Engineering & Preprocessing data...")
+
+# 1. FIX DATA IMBALANCE (Undersampling)
+# Fraud is extremely rare. Undersample legitimate transactions heavily to force the model to learn fraud
+fraud_df = df[df['isFraud'] == 1]
+legit_df = df[df['isFraud'] == 0].sample(n=len(fraud_df) * 3, random_state=42) # 3:1 ratio
+df = pd.concat([fraud_df, legit_df]).sample(frac=1, random_state=42).reset_index(drop=True)
+
+print(f"Balanced Dataset Size: {len(df)} rows")
+
+# 2. ENGINEER TIME & BEHAVIORAL FEATURES
+# Extract time of day from step (step represents 1 hour)
+df['hour_of_day'] = df['step'] % 24
+
+# Extract simplistic edge velocity proxy (amount relative to balance)
+# Avoid groupby transforms which might be overly localized in undersampled sets
+df['balance_drain_ratio'] = np.where(df['oldbalanceOrg'] > 0, df['amount'] / df['oldbalanceOrg'], 0)
 
 # Convert categorical 'type' to numerical
 label_encoder = LabelEncoder()
 df['type'] = label_encoder.fit_transform(df['type'])
 
-# 'isFraud' is our target variable
-X = df.drop(columns=['isFraud']).values
+# We now drop raw fields that can't be normalized safely into the NN, like raw IDs
+# Keep 'hour_of_day' and 'balance_drain_ratio' instead of relying solely on amounts.
+X = df.drop(columns=['step', 'nameOrig', 'nameDest', 'isFlaggedFraud', 'isFraud']).values
 y = df['isFraud'].values
 
 # Split data into train and test
@@ -32,6 +48,13 @@ scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
+# PRINT SCALERS FOR THE JAVASCRIPT UI!
+print("\n" + "="*50)
+print("ACTION REQUIRED: COPY THESE ARRAYS INTO index.html!")
+print(f"const SCALER_MEANS = [{', '.join([str(round(x, 4)) for x in scaler.mean_])}];")
+print(f"const SCALER_SCALES = [{', '.join([str(round(x, 4)) for x in scaler.scale_])}];")
+print("="*50 + "\n")
+
 # Convert to PyTorch tensors
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
 y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
@@ -40,24 +63,37 @@ y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
 
 # Create DataLoader
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-train_loader = DataLoader(train_dataset, batch_size=256, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 
-# Define the Neural Network
+# 3. UPGRADED NEURAL NETWORK ARCHITECTURE
+# Added deeper layers, Batch Normalization to stabilize fast inputs, and Dropout to prevent overfitting
 class FraudDetectionNet(nn.Module):
     def __init__(self, input_size):
         super(FraudDetectionNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, 32)
+        self.fc1 = nn.Linear(input_size, 64)
+        self.bn1 = nn.BatchNorm1d(64)
         self.relu1 = nn.ReLU()
-        self.fc2 = nn.Linear(32, 16)
+        self.drop1 = nn.Dropout(0.2)
+        
+        self.fc2 = nn.Linear(64, 32)
+        self.bn2 = nn.BatchNorm1d(32)
         self.relu2 = nn.ReLU()
-        self.fc3 = nn.Linear(16, 1)
+        self.drop2 = nn.Dropout(0.2)
+        
+        self.fc3 = nn.Linear(32, 1)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         out = self.fc1(x)
+        out = self.bn1(out)
         out = self.relu1(out)
+        out = self.drop1(out)
+        
         out = self.fc2(out)
+        out = self.bn2(out)
         out = self.relu2(out)
+        out = self.drop2(out)
+        
         out = self.fc3(out)
         out = self.sigmoid(out)
         return out
@@ -69,8 +105,8 @@ model = FraudDetectionNet(input_size)
 criterion = nn.BCELoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-print("Training the model...")
-epochs = 5
+print("Training the robust edge model...")
+epochs = 8
 for epoch in range(epochs):
     model.train()
     running_loss = 0.0
@@ -84,18 +120,18 @@ for epoch in range(epochs):
     
     print(f"Epoch [{epoch+1}/{epochs}], Loss: {running_loss/len(train_loader):.4f}")
 
-# Optional evaluation step
+# Evaluation showing real precision
 model.eval()
 with torch.no_grad():
     predictions = model(X_test_tensor)
     predicted_labels = (predictions > 0.5).float()
-    accuracy = (predicted_labels == y_test_tensor).float().mean()
-    print(f"Test Accuracy: {accuracy.item():.4f}")
+    print("\nTest Classification Report:")
+    print(classification_report(y_test_tensor.numpy(), predicted_labels.numpy(), target_names=["Legitimate", "Fraud"]))
 
 # Export to ONNX Runtime
-print("Exporting model to ONNX...")
+print("Exporting resilient model to ONNX...")
 model.eval()
-dummy_input = torch.randn(1, input_size)  # Create a dummy input with the correct shape
+dummy_input = torch.randn(1, input_size) 
 onnx_filename = os.path.join(os.path.dirname(__file__), "../models/fraud_detection_model.onnx")
 torch.onnx.export(model, 
                   dummy_input, 
@@ -107,15 +143,14 @@ torch.onnx.export(model,
                   output_names=['output'], 
                   dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}})
 
-# Merge the potentially split external .data files forcibly generated by the TorchDynamo exporter
+# Merge the potentially split external .data files
 import onnx
 import glob
 print("Consolidating ONNX external resources...")
 exported_model = onnx.load(onnx_filename)
 onnx.save_model(exported_model, onnx_filename, save_as_external_data=False)
 
-# Delete any lingering .data artifacts if they exist
 for external_data_file in glob.glob(onnx_filename + ".data"):
     os.remove(external_data_file)
 
-print(f"Model successfully exported to {onnx_filename} without external dependencies!")
+print(f"Model successfully exported to {onnx_filename}!")

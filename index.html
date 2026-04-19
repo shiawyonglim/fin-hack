@@ -969,14 +969,15 @@ async function runTransfer() {
         const newBal = Math.max(0, sBal - amount);
         
         // Apply StandardScaler parameters derived from train_fraud_detection.py
-        const SCALER_MEANS = [1.6873775, 166544.8789845752, 914073.6878838824, 933844.4933793057, 983060.447071236, 1162645.8533965016];
-        const SCALER_SCALES = [1.3406079488429614, 272342.7236703769, 3021934.78615668, 3059058.8683200935, 2337060.396533656, 2510274.159731961];
+        const SCALER_MEANS = [1.8816, 344138.4032, 896372.294, 696318.2967, 886111.567, 1134660.4682, 13.1357, 43.4192];
+        const SCALER_SCALES = [1.4156, 962742.8169, 2755691.8747, 2634626.626, 2331635.3883, 2547797.3727, 5.1338, 441.9601];
         
-        const raw_features = [encoded, amount, sBal, newBal, 0, amount];
+        const drain_ratio = sBal > 0 ? (amount / sBal) : 0;
+        const raw_features = [encoded, amount, sBal, newBal, rBal, rBal + amount, hour, drain_ratio];
         const scaled_features = raw_features.map((val, idx) => (val - SCALER_MEANS[idx]) / SCALER_SCALES[idx]);
         
         const features = Float32Array.from(scaled_features);
-        const tensor = new ort.Tensor('float32', features, [1,6]);
+        const tensor = new ort.Tensor('float32', features, [1,8]);
         const feeds = {}; feeds[session.inputNames[0]] = tensor;
         const results = await session.run(feeds);
         onnxProb = results[session.outputNames[0]].data[0];
