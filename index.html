@@ -760,7 +760,15 @@ async function runTransfer() {
     try {
         const encoded = TYPE_ENCODING[txnType] || 4;
         const newBal = Math.max(0, sBal - amount);
-        const features = Float32Array.from([encoded, amount, sBal, newBal, 0, amount]);
+        
+        // Apply StandardScaler parameters derived from train_fraud_detection.py
+        const SCALER_MEANS = [1.6873775, 166544.8789845752, 914073.6878838824, 933844.4933793057, 983060.447071236, 1162645.8533965016];
+        const SCALER_SCALES = [1.3406079488429614, 272342.7236703769, 3021934.78615668, 3059058.8683200935, 2337060.396533656, 2510274.159731961];
+        
+        const raw_features = [encoded, amount, sBal, newBal, 0, amount];
+        const scaled_features = raw_features.map((val, idx) => (val - SCALER_MEANS[idx]) / SCALER_SCALES[idx]);
+        
+        const features = Float32Array.from(scaled_features);
         const tensor = new ort.Tensor('float32', features, [1,6]);
         const feeds = {}; feeds[session.inputNames[0]] = tensor;
         const results = await session.run(feeds);
