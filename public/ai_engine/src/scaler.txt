@@ -1,0 +1,37 @@
+Loading dataset...
+Feature Engineering & Preprocessing data...
+Balanced Dataset Size: 1668 rows
+
+==================================================
+ACTION REQUIRED: COPY THESE ARRAYS INTO index.html!
+const SCALER_MEANS = [1.8816, 344138.4032, 896372.294, 696318.2967, 886111.567, 1134660.4682, 13.1357, 43.4192];
+const SCALER_SCALES = [1.4156, 962742.8169, 2755691.8747, 2634626.626, 2331635.3883, 2547797.3727, 5.1338, 441.9601];
+==================================================
+
+Training the robust edge model...
+Epoch [1/8], Loss: 0.6866
+Epoch [2/8], Loss: 0.5673
+Epoch [3/8], Loss: 0.5091
+Epoch [4/8], Loss: 0.4649
+Epoch [5/8], Loss: 0.4333
+Epoch [6/8], Loss: 0.4127
+Epoch [7/8], Loss: 0.3906
+Epoch [8/8], Loss: 0.3786
+
+Test Classification Report:
+                            precision    recall  f1-score   support
+
+    Legitimate               0.90      0.97      0.94       258
+       Fraud               0.88      0.64      0.74        76
+
+    accuracy                           0.90       334
+   macro avg               0.89      0.81      0.84       334
+weighted avg               0.90      0.90      0.89       334
+
+Exporting resilient model to ONNX...
+[torch.onnx] Obtain model graph for `FraudDetectionNet([...])` with `torch.export.export(..., strict=False)`... ✅
+[torch.onnx] Run decompositions... ✅
+[torch.onnx] Translate the graph into ONNX... ✅
+[torch.onnx] Optimize the ONNX graph... ✅
+Consolidating ONNX external resources...
+Model successfully exported to C:\finhack\fin-hack\public\ai_engine\src\../models/fraud_detection_model.onnx!
