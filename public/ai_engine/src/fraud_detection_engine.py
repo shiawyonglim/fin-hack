@@ -519,52 +519,82 @@ class DeterministicRuleEngine:
 #  ONNX NEURAL NETWORK INFERENCE
 # ============================================================================
 
+import multiprocessing
+
 class OnnxFraudModel:
     """
-    Loads the trained fraud_detection_model.onnx and runs inference.
-    Input features (6): type, amount, oldbalanceOrg, newbalanceOrig,
-                         oldbalanceDest, newbalanceDest
-    Output: fraud probability (0.0 - 1.0)
+    Smart Edge AI Engine.
+    Automatically selects between Float32 (High Accuracy) and Int8 (High Speed)
+    models based on the device's hardware capabilities.
     """
 
-    # Mapping transaction type strings to the LabelEncoder integers
-    # used during training on the PaySim dataset
     TYPE_ENCODING = {
-        "CASH_IN": 0,
-        "CASH_OUT": 1,
-        "DEBIT": 2,
-        "PAYMENT": 3,
-        "TRANSFER": 4,
+        "CASH_IN": 0, "CASH_OUT": 1, "DEBIT": 2, "PAYMENT": 3, "TRANSFER": 4,
     }
 
-    def __init__(self, model_path: str = DEFAULT_ONNX_MODEL):
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"ONNX model not found: {model_path}")
-        self.session = ort.InferenceSession(model_path)
+    def __init__(self, normal_model_path: str, quantized_model_path: str):
+        # SMART DEVICE SELECTOR: Check CPU Cores to simulate device performance
+        cpu_cores = multiprocessing.cpu_count()
+        
+        if cpu_cores <= 4:
+            print(f"[AI CORE] Budget device detected ({cpu_cores} cores). Loading Quantized Int8 Model for speed.")
+            chosen_model = quantized_model_path
+        else:
+            print(f"[AI CORE] High-end device detected ({cpu_cores} cores). Loading Normal Float32 Model for max accuracy.")
+            chosen_model = normal_model_path
+
+        if not os.path.exists(chosen_model):
+            raise FileNotFoundError(f"ONNX model not found: {chosen_model}")
+            
+        self.session = ort.InferenceSession(chosen_model)
         self.input_name = self.session.get_inputs()[0].name
-        print(f"[ONNX] Loaded fraud detection model from {model_path}")
 
-    def predict(self, txn: Transaction) -> float:
-        """
-        Run the ONNX model on a single transaction.
-        Returns the fraud probability (0.0 = safe, 1.0 = fraud).
-        """
+    def predict(self, txn: Transaction, transaction_history: list = None) -> float:
         txn_type_encoded = self.TYPE_ENCODING.get(txn.transaction_type.upper(), 3)
+        new_balance_sender = max(txn.sender_balance - txn.amount, 0.0)
+        
+        hour_of_day = txn.timestamp.hour
+        balance_drain_ratio = (txn.amount / txn.sender_balance) if txn.sender_balance > 0 else 0.0
 
-        # Build the 6-feature input vector matching training data
-        # [type, amount, oldbalanceOrg, newbalanceOrig, oldbalanceDest, newbalanceDest]
-        new_balance_sender = txn.sender_balance - txn.amount
-        features = np.array([[
+        # --- NEW: CALCULATE VELOCITY ON THE FLY ---
+        # 1. Count past transactions in the offline cache
+        daily_transfer_count = len(transaction_history) if transaction_history else 0
+        
+        # 2. Calculate historical average (default to 1.0 ratio if no history)
+        if transaction_history:
+            avg_amount = sum(h.get("amount", 0) for h in transaction_history) / len(transaction_history)
+            amount_vs_average = (txn.amount / avg_amount) if avg_amount > 0 else 1.0
+        else:
+            amount_vs_average = 1.0
+
+        # Build the EXACT 10 features expected by the ONNX model
+        raw_features = np.array([
             txn_type_encoded,
             txn.amount,
             txn.sender_balance,
-            max(new_balance_sender, 0.0),  # newbalanceOrig
-            0.0,  # oldbalanceDest (unknown at sender side for privacy)
-            txn.amount,  # newbalanceDest (approximation)
-        ]], dtype=np.float32)
+            new_balance_sender,
+            0.0,        # oldbalanceDest
+            txn.amount, # newbalanceDest
+            hour_of_day,
+            balance_drain_ratio,
+            daily_transfer_count,  # <-- NEW
+            amount_vs_average      # <-- NEW
+        ], dtype=np.float32)
 
-        output = self.session.run(None, {self.input_name: features})
-        probability = float(output[0][0][0])
+        # 3. Apply the Standard Scaler 
+        # !!! YOU MUST UPDATE THESE ARRAYS WITH THE NEW 10-NUMBER CONSOLE OUTPUT !!!
+        scaler_means = np.array([1.7078, 163120.888, 878499.1822, 898848.3621, 979592.8811, 1138019.2403, 0.0002, 1.0, 13.9437, 76.6354])
+        scaler_scales = np.array([1.3444, 268863.0357, 2942850.0581, 2979972.4519, 2320771.3175, 2467818.0594, 0.0128, 0.0129, 4.2905, 2193.2676])
+        
+        scaled_features = (raw_features - scaler_means) / scaler_scales
+        
+        # Reshape for the batch size (1, 10) and run inference
+        final_input = np.array([scaled_features], dtype=np.float32)
+        output = self.session.run(None, {self.input_name: final_input})
+        
+        raw_score = float(output[0][0][0])
+        probability = 1.0 / (1.0 + np.exp(-raw_score))
+        
         return probability
 
 
@@ -573,26 +603,20 @@ class OnnxFraudModel:
 # ============================================================================
 
 class FraudDetectionEngine:
-    """
-    The master engine that orchestrates:
-     1. ONNX neural network inference (ML-based anomaly detection)
-     2. Deterministic rule engine (white-box compliance logs)
-     3. Scammer database lookup (SC / BNM)
-     4. User self-evaluation & categorisation
-
-    Online mode:  Full evaluation (NN + rules + DB + history)
-    Offline mode: Zero-Trust Edge — only evaluates SENDER's behavior,
-                  checks receiver against CACHED scammer database.
-    """
-
-    def __init__(self, onnx_model_path: str = DEFAULT_ONNX_MODEL,
+    def __init__(self, 
+                 normal_onnx_path: str = DEFAULT_ONNX_MODEL,
+                 quantized_onnx_path: str = DEFAULT_ONNX_MODEL.replace(".onnx", "_quantized.onnx"),
                  scammer_db_csv: str = DEFAULT_SCAMMER_CSV):
-        self.onnx_model = OnnxFraudModel(onnx_model_path)
+                 
+        # 1. Initialize the Smart AI Model
+        self.onnx_model = OnnxFraudModel(normal_onnx_path, quantized_onnx_path)
+        
+        # 2. Initialize the Deterministic Rule Engines & Databases
         self.scammer_db = ScammerDatabase(scammer_db_csv)
         self.rule_engine = DeterministicRuleEngine()
         self.self_eval = SelfEvaluationEngine()
 
-        # In-memory log of suspicious persons (flagged across sessions)
+        # 3. In-memory log of suspicious persons (flagged across sessions)
         self.flagged_persons = {}
 
     def evaluate_transaction(self, txn: Transaction,
@@ -710,3 +734,30 @@ class FraudDetectionEngine:
             print()
 
         print("=" * 70)
+
+
+# Add this to the very bottom of fraud_detection_engine.py
+if __name__ == "__main__":
+    print("Booting up Hackathon Fraud Engine...")
+    engine = FraudDetectionEngine()
+
+    # 1. Create a fake transaction (65-year-old sending RM 4,500 at 2 AM)
+    test_txn = Transaction(
+        sender_id="user_123",
+        sender_name="Uncle Ah Kao",
+        sender_age=65,
+        sender_balance=5000.0,
+        sender_account_age_days=300,
+        receiver_id="user_999",
+        receiver_name="Aether Bridge Financial", # This is on your blacklist!
+        amount=4500.0,
+        transaction_type="TRANSFER",
+        timestamp=datetime.now().replace(hour=2) # 2:00 AM
+    )
+
+    # 2. "Talk" to the model
+    print("Evaluating transaction...")
+    result = engine.evaluate_transaction(test_txn, transaction_history=[])
+    
+    # 3. Print the gorgeous compliance log
+    engine.print_result(result)
