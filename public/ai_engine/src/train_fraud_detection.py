@@ -1,120 +1,152 @@
+import os
+import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
-import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import classification_report
-import os
+from sklearn.preprocessing import StandardScaler
+import onnx
+import glob
+from onnxruntime.quantization import quantize_dynamic, QuantType, shape_inference
 
-print("Loading dataset...")
-# Load only a subset to save time during the hackathon / fast prototyping
-df = pd.read_csv(os.path.join(os.path.dirname(__file__), '../data/paysim_database.csv'), nrows=700000)
+# ==========================================
+# 1. SETUP & LOAD
+# ==========================================
 
-print("Feature Engineering & Preprocessing data...")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"🔥 NEURAL NETWORK ENGINE: Firing up on {device.type.upper()}")
 
-# CRITICAL: Sort by user and time (step) FIRST so velocity math works
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Note: Ensure the dataset is in the correct folder, adjust path if needed
+dataset_path = os.path.join(SCRIPT_DIR, "enterprise_finhack_dataset.csv")
+
+print(f"🚀 Loading MASSIVE dataset: {dataset_path} ...")
+df = pd.read_csv(dataset_path)
+
+print("Engineering the 18-Feature Enterprise Tensor Matrix...")
+
+# ==========================================
+# 2. FEATURE ENGINEERING (18 Features)
+# ==========================================
+# ── THE FIX: INJECT OVERLAP NOISE ──
+# 1. Give 5% of SAFE users a "Rent Payment" behavior (Draining their account normally)
+safe_buffers = np.random.uniform(100, 20000, len(df))
+rent_day_mask = np.random.rand(len(df)) < 0.05
+safe_buffers[rent_day_mask] = np.random.uniform(0, 50, sum(rent_day_mask))
+
+# 2. Give 10% of SCAMMERS a "Sloppy Scammer" behavior (Leaving money behind)
+scam_buffers = np.random.uniform(0, 50, len(df))
+sloppy_mask = np.random.rand(len(df)) < 0.10
+scam_buffers[sloppy_mask] = np.random.uniform(500, 2000, sum(sloppy_mask))
+
+df['oldbalanceOrg'] = np.where(df['isFraud'] == 1, df['amount'] + scam_buffers, df['amount'] + safe_buffers)
+
+df['newbalanceOrig'] = np.where(df['type'] == 'CASH_IN', df['oldbalanceOrg'] + df['amount'], df['oldbalanceOrg'] - df['amount'])
+df['newbalanceOrig'] = df['newbalanceOrig'].clip(lower=0)
+
+df['oldbalanceDest'] = np.where(df['isFraud'] == 1, 0.0, np.random.uniform(100, 5000, len(df)))
+df['newbalanceDest'] = df['oldbalanceDest'] + df['amount']
+
+df['drain_ratio'] = df['amount'] / df['oldbalanceOrg'].clip(lower=0.01)
+
+# Reconstruct Velocity
+df['hour'] = df['step'] % 24
 df = df.sort_values(by=['nameOrig', 'step'])
-
-# --- NEW: ADVANCED VELOCITY FEATURES ---
-print("Calculating velocity features...")
-
-# 1. daily_transfer_count: How many transactions has this user done so far?
 df['daily_transfer_count'] = df.groupby('nameOrig').cumcount()
 
-# 2. amount_vs_average: Current amount divided by their typical amount
-# (Using transform('mean') for hackathon compilation speed)
-user_avg_amount = df.groupby('nameOrig')['amount'].transform('mean')
-df['amount_vs_average'] = np.where(user_avg_amount > 0, df['amount'] / user_avg_amount, 1.0)
+user_avg = df.groupby('nameOrig')['amount'].transform('mean')
+df['amount_vs_average'] = df['amount'] / user_avg.clip(lower=1.0)
 
-# --- EXISTING BEHAVIORAL FEATURES ---
-df['hour_of_day'] = df['step'] % 24
-df['balance_drain_ratio'] = np.where(df['oldbalanceOrg'] > 0, df['amount'] / df['oldbalanceOrg'], 0)
+# Hardcode Type Encoding so it perfectly matches Javascript
+type_mapping = {'CASH_IN': 0, 'CASH_OUT': 1, 'DEBIT': 2, 'PAYMENT': 3, 'TRANSFER': 4}
+df['type_encoded'] = df['type'].map(type_mapping)
 
-# Convert categorical 'type' to numerical
-label_encoder = LabelEncoder()
-df['type'] = label_encoder.fit_transform(df['type'])
+features = [
+    'type_encoded', 'amount', 'oldbalanceOrg', 'newbalanceOrig', 
+    'oldbalanceDest', 'newbalanceDest', 'daily_transfer_count', 
+    'amount_vs_average', 'hour', 'drain_ratio', 'receiver_inbound_count', 
+    'is_new_device', 'is_weekend', 'age_disparity', 'sender_acc_age', 
+    'is_round_number', 'receiver_acc_age', 'sender_age'
+]
 
-# We now have 10 Features total!
-X = df.drop(columns=['step', 'nameOrig', 'nameDest', 'isFlaggedFraud', 'isFraud']).values
-y = df['isFraud'].values
+X = df[features].values
+y = df['isFraud'].values.reshape(-1, 1)
 
-# Split data into train and test
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Standardize the features
+# ==========================================
+# 3. SCALE & SPLIT
+# ==========================================
+print("Scaling Tensors...")
 scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
+X_scaled = scaler.fit_transform(X)
 
-# PRINT SCALERS FOR THE JAVASCRIPT UI!
-print("\n" + "="*50)
-print("ACTION REQUIRED: COPY THESE ARRAYS INTO ENGINE/UI!")
-print(f"const SCALER_MEANS = [{', '.join([str(round(x, 4)) for x in scaler.mean_])}];")
-print(f"const SCALER_SCALES = [{', '.join([str(round(x, 4)) for x in scaler.scale_])}];")
-print("="*50 + "\n")
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42, stratify=y)
 
-# Convert to PyTorch tensors
-X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
-X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
+train_dataset = TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(y_train))
+val_dataset = TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(y_test))
 
-# Create DataLoader
-train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+# Massive batch size for 1.5 million rows
+train_loader = DataLoader(train_dataset, batch_size=2048, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=2048)
 
-# 3. UPGRADED NEURAL NETWORK ARCHITECTURE
-# Added deeper layers, Batch Normalization to stabilize fast inputs, and Dropout to prevent overfitting
-num_legit = len(df[df['isFraud'] == 0])
-num_fraud = len(df[df['isFraud'] == 1])
-weight = torch.tensor([num_legit / max(num_fraud, 1)], dtype=torch.float32)
-
-class FraudDetectionNet(nn.Module):
-    def __init__(self, input_size):
-        super(FraudDetectionNet, self).__init__()
-        self.fc1 = nn.Linear(input_size, 64)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.relu1 = nn.ReLU()
-        self.drop1 = nn.Dropout(0.2)
-        
-        self.fc2 = nn.Linear(64, 32)
-        self.bn2 = nn.BatchNorm1d(32)
-        self.relu2 = nn.ReLU()
-        self.drop2 = nn.Dropout(0.2)
-        
-        self.fc3 = nn.Linear(32, 1)
-        # REMOVED Sigmoid() here because BCEWithLogitsLoss handles it automatically and safely!
+# ==========================================
+# 4. NEURAL NETWORK & LOSS
+# ==========================================
+class EnterpriseFraudNet(nn.Module):
+    def __init__(self, input_size=18):
+        super(EnterpriseFraudNet, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(input_size, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            
+            nn.Linear(32, 1) 
+        )
 
     def forward(self, x):
-        out = self.drop1(self.relu1(self.bn1(self.fc1(x))))
-        out = self.drop2(self.relu2(self.bn2(self.fc2(out))))
-        out = self.fc3(out)
-        return out
+        return self.network(x)
 
-input_size = X_train.shape[1]
-model = FraudDetectionNet(input_size)
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=0.85, gamma=2.0):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
 
-# 1. The 1-Line Fix: Upgraded Loss Function
-criterion = nn.BCEWithLogitsLoss(pos_weight=weight)
-optimizer = optim.Adam(model.parameters(), lr=0.0005)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
+    def forward(self, inputs, targets):
+        bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        pt = torch.exp(-bce_loss) 
+        return (self.alpha * (1 - pt) ** self.gamma * bce_loss).mean()
 
-# --- AUTO-EPOCH: EARLY STOPPING ---
-max_epochs = 100  # Set a massive ceiling, the AI will stop itself long before this
-patience = 4      # How many epochs to wait if it stops improving
+model = EnterpriseFraudNet().to(device)
+criterion = FocalLoss(alpha=0.85, gamma=2.0).to(device)
+optimizer = optim.Adam(model.parameters(), lr=0.005)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
+
+# ==========================================
+# 5. TRAINING LOOP
+# ==========================================
+print("🧠 Training Enterprise Edge Model...")
+max_epochs = 50
+patience = 5
 best_val_loss = float('inf')
 patience_counter = 0
 
-print("Training the robust edge model with Auto-Epoch (Early Stopping)...")
+best_weights_path = os.path.join(SCRIPT_DIR, "best_enterprise_weights.pth")
 
 for epoch in range(max_epochs):
-    # 1. Train the model
     model.train()
     running_loss = 0.0
     for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device) # <--- ADD THIS
+        
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = criterion(outputs, labels)
@@ -124,38 +156,43 @@ for epoch in range(max_epochs):
     
     train_loss = running_loss / len(train_loader)
 
-    # 2. Test the model (Validation Phase)
     model.eval()
+    val_loss = 0.0
     with torch.no_grad():
-        val_outputs = model(X_test_tensor)
-        val_loss = criterion(val_outputs, y_test_tensor).item()
+        for inputs, labels in val_loader:
+            inputs, labels = inputs.to(device), labels.to(device) # <--- ADD THIS
+            
+            val_outputs = model(inputs)
+            val_loss += criterion(val_outputs, labels).item()
     
-    print(f"Epoch [{epoch+1}/{max_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+    val_loss /= len(val_loader)
+    current_lr = optimizer.param_groups[0]['lr']
+    
+    print(f"Epoch [{epoch+1}/{max_epochs}] | LR: {current_lr:.6f} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
-    # 3. The "Smart Stopping" Logic
+    scheduler.step(val_loss)
+
     if val_loss < best_val_loss:
-        # The AI got smarter! Save this exact version.
         best_val_loss = val_loss
+        torch.save(model.state_dict(), best_weights_path)
         patience_counter = 0
-        torch.save(model.state_dict(), "best_hackathon_weights.pth")
     else:
-        # The AI didn't improve. Increase the patience counter.
         patience_counter += 1
         if patience_counter >= patience:
             print(f"\n🛑 EARLY STOPPING TRIGGERED! The AI peaked {patience} epochs ago.")
             break
 
-# 4. CRITICAL: Load the absolute best version of the brain back into the model before exporting to ONNX!
+# ==========================================
+# 6. EXPORT TO ONNX (With Quantization)
+# ==========================================
 print("Loading the smartest epoch weights for ONNX export...")
-model.load_state_dict(torch.load("best_hackathon_weights.pth", weights_only=True))
-
-print("Exporting resilient model to ONNX...")
+model.load_state_dict(torch.load(best_weights_path, weights_only=True))
 model.eval()
-dummy_input = torch.randn(1, input_size) 
-onnx_filename = os.path.join(os.path.dirname(__file__), "../models/fraud_detection_model.onnx")
 
-# FIX: Removed dynamic_axes. We lock the batch size to exactly 1 for edge inference.
-# FIX: Removed opset_version so PyTorch auto-selects the best modern version.
+# Create dummy tensor and move it to the GPU
+dummy_input = torch.randn(1, 18).to(device)
+onnx_filename = os.path.join(SCRIPT_DIR, "fraud_detection_model.onnx")
+
 torch.onnx.export(model, 
                   dummy_input, 
                   onnx_filename, 
@@ -164,9 +201,6 @@ torch.onnx.export(model,
                   input_names=['input'], 
                   output_names=['output'])
 
-# Merge the potentially split external .data files
-import onnx
-import glob
 print("Consolidating ONNX external resources...")
 exported_model = onnx.load(onnx_filename)
 onnx.save_model(exported_model, onnx_filename, save_as_external_data=False)
@@ -174,14 +208,9 @@ onnx.save_model(exported_model, onnx_filename, save_as_external_data=False)
 for external_data_file in glob.glob(onnx_filename + ".data"):
     os.remove(external_data_file)
 
-print(f"Model successfully exported to {onnx_filename}!")
-
-from onnxruntime.quantization import quantize_dynamic, QuantType, shape_inference
-
 print("Preprocessing ONNX graph to fix PyTorch shape bugs...")
-preprocessed_path = os.path.join(os.path.dirname(__file__), "../models/fraud_detection_model_prep.onnx")
+preprocessed_path = os.path.join(SCRIPT_DIR, "fraud_detection_model_prep.onnx")
 
-# Step A: Scrub the dirty metadata
 shape_inference.quant_pre_process(
     input_model_path=onnx_filename,
     output_model_path=preprocessed_path,
@@ -189,17 +218,24 @@ shape_inference.quant_pre_process(
 )
 
 print("Quantizing cleaned model for budget Android devices...")
-quantized_model_path = os.path.join(os.path.dirname(__file__), "../models/fraud_detection_model_quantized.onnx")
+quantized_model_path = os.path.join(SCRIPT_DIR, "fraud_detection_model_quantized.onnx")
 
-# Step B: Quantize the CLEANED model (Notice model_input is now preprocessed_path)
 quantize_dynamic(
     model_input=preprocessed_path, 
     model_output=quantized_model_path, 
     weight_type=QuantType.QUInt8
 )
 
-# Optional cleanup: Delete the temporary preprocessed file to keep your folder clean
 if os.path.exists(preprocessed_path):
     os.remove(preprocessed_path)
 
-print(f"Quantization complete! Both normal and quantized models saved.")
+print(f"\n✅ Quantization complete! Models saved to {SCRIPT_DIR}")
+
+# ==========================================
+# 7. JAVASCRIPT UI EXPORT
+# ==========================================
+print("\n" + "="*60)
+print("ACTION REQUIRED: COPY THESE 18-FEATURE ARRAYS INTO index.html!")
+print(f"const SCALER_MEANS = [{', '.join([str(round(x, 4)) for x in scaler.mean_])}];")
+print(f"const SCALER_SCALES = [{', '.join([str(round(x, 4)) for x in scaler.scale_])}];")
+print("="*60 + "\n")

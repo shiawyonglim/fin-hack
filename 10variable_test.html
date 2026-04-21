@@ -490,10 +490,6 @@ const MODEL_URL = './public/ai_engine/models/fraud_detection_model.onnx?v=' + Da
 let session = null;
 let txnCount = 0;
 
-const SCALER_MEANS = [2.3894, 613.438, 9663.2816, 9203.3479, 2415.0579, 3028.496, 15.2093, 1.0, 11.5004, 0.1578, 1.2434, 0.0132, 0.2678, 21.5892, 2144.8797, 0.0264, 2033.367, 49.4144];
-const SCALER_SCALES = [1.4317, 1344.4684, 6056.1792, 6234.5751, 1489.547, 1737.6495, 9.6161, 1.5177, 6.9207, 0.2785, 2.3133, 0.114, 0.4428, 15.2652, 1067.9986, 0.1604, 1144.1137, 18.299];
-
-
 // Transaction history for velocity + self-evaluation
 // Each entry: { senderId, senderName, senderAge, receiverId, receiverName, amount, hour, timestamp, blocked }
 const txnHistory = [];
@@ -698,8 +694,6 @@ async function runTransfer() {
     const amount = parseFloat(document.getElementById('txnAmount').value);
     const hour   = parseInt(document.getElementById('txnHour').value);
     const txnType = document.getElementById('txnType').value;
-    // Ensure you have these variables pulled from your HTML input fields or mock profiles!
-const rAccAge = parseInt(document.getElementById("receiverAccAge").value) || 1500;
 
     const senderId = "sender_" + sName.toLowerCase().replace(/\s/g,'_');
     const receiverId = "receiver_" + rName.toLowerCase().replace(/\s/g,'_');
@@ -775,73 +769,60 @@ const rAccAge = parseInt(document.getElementById("receiverAccAge").value) || 150
     }
 
    // ── ONNX Neural Network ──
-    // =========================================================
-    //  BLACK-BOX ENGINE: 18-FEATURE ENTERPRISE ONNX
-    // =========================================================
     let onnxProb = 0;
     try {
         const encoded = TYPE_ENCODING[txnType] || 4;
         const newBal = Math.max(0, sBal - amount);
-        const newRBal = rBal + amount;
         
-        // ── 1. Sender Velocity Math ──
+        // Apply StandardScaler parameters derived from train_fraud_detection.py (10-feature version)
+        const SCALER_MEANS = [2.1568, 414148.9437, 788179.4785, 483639.0092, 675381.1496, 902435.2966, 1.313, 0.9987, 14.2513, 31.7818];
+        const SCALER_SCALES = [1.442, 1331074.829, 2702950.4574, 2298220.2209, 2519560.6905, 2893850.722, 2.8897, 0.8111, 5.3512, 706.5843];
+        
+        // Velocity & Behavioral calculations
         const userHistory = txnHistory.filter(t => t.senderId === senderId);
         const daily_transfer_count = userHistory.length;
+        
         const totalAmount = userHistory.reduce((sum, t) => sum + t.amount, 0) + amount;
         const avgAmount = totalAmount / (userHistory.length + 1);
         const amount_vs_average = avgAmount > 0 ? (amount / avgAmount) : 1.0;
         const drain_ratio = sBal > 0 ? (amount / sBal) : 0;
 
-        // ── 2. The 8 New Enterprise Features ──
-        // Mule Tracking: How many times has receiver gotten money today?
-        const rHistory = txnHistory.filter(t => t.receiverId === rName);
-        const receiver_inbound_count = rHistory.length; 
-        
-        // ATO Flag: Assume 0 for normal UI usage, or hook to a checkbox
-        const is_new_device = 0; 
-        
-        // Bank Holiday Flag: Check if today is Saturday (6) or Sunday (0)
-        const dayOfWeek = new Date().getDay();
-        const is_weekend = (dayOfWeek === 0 || dayOfWeek === 6) ? 1 : 0;
-        
-        // Grandparent Scam Vector
-        const age_disparity = Math.abs(sAge - rAge);
-        
-        // Clean Sweep Anomaly
-        const is_round_number = (amount % 100 === 0) ? 1 : 0;
-
-        // ── 3. Compile the 18-Feature Matrix ──
-        // CRITICAL: This exact order MUST match your PyTorch script perfectly
+        // FIX 1: Feature array must perfectly match the Python model's expected order!
+        // Order: Type, Amount, SenderOld, SenderNew, ReceiverOld, ReceiverNew, Hour, DrainRatio, VelocityCount, VelocityAvg
         const raw_features = [
-            encoded, amount, sBal, newBal, rBal, newRBal, 
-            daily_transfer_count, amount_vs_average, hour, drain_ratio,
-            receiver_inbound_count, is_new_device, is_weekend, age_disparity,
-            sAccAge, is_round_number, rAccAge, sAge
+            encoded,                // 0: type
+            amount,                 // 1: amount
+            sBal,                   // 2: oldbalanceOrg
+            newBal,                 // 3: newbalanceOrig
+            rBal,                   // 4: oldbalanceDest
+            rBal + amount,          // 5: newbalanceDest
+            daily_transfer_count,   // 6: daily_transfer_count
+            amount_vs_average,      // 7: amount_vs_average
+            hour,                   // 8: hour_of_day
+            drain_ratio             // 9: balance_drain_ratio
         ];
         
-        // Scale the data
+        // Scale the features
         const scaled_features = raw_features.map((val, idx) => (val - SCALER_MEANS[idx]) / SCALER_SCALES[idx]);
         
-        // ── 4. Edge Inference ──
+        // THE TECH LEAD DEBUGGER: Open your browser console (F12) and look at these!
+        console.log("Raw Features:", raw_features);
+        console.log("Scaled Features:", scaled_features);
+        
+        // Run Inference
         const features = Float32Array.from(scaled_features);
-        
-        // CRITICAL UPDATE: Change [1, 10] to [1, 18]
-        const tensor = new ort.Tensor('float32', features, [1, 18]); 
-        
+        const tensor = new ort.Tensor('float32', features, [1,10]);
         const feeds = {}; feeds[session.inputNames[0]] = tensor;
         const results = await session.run(feeds);
         
-        let rawScore = results[session.outputNames[0]].data[0];
+        // FIX 2: Apply the Sigmoid function to squash the raw logit into a beautiful 0.0 to 1.0 percentage
+        const rawScore = results[session.outputNames[0]].data[0];
         onnxProb = 1.0 / (1.0 + Math.exp(-rawScore));
 
-        // Inject AI confidence into the Cumulative Risk Matrix
-        const aiRiskPoints = (onnxProb * 100);
-        
-        if (aiRiskPoints > 60) {
-            whiteBoxRiskScore += aiRiskPoints;
-            logs.push({ rule: "ENTERPRISE_AI_CORE", desc: `AI detected Zero-Day anomaly. Confidence: ${aiRiskPoints.toFixed(1)}%`, boundary: "AI_SCORE > 60", actual: `${aiRiskPoints.toFixed(1)}%`, result: "FAIL", action: `+${aiRiskPoints.toFixed(0)} POINTS` });
+        if (onnxProb > 0.5) {
+            logs.push({ rule: "ONNX_NEURAL_NETWORK", desc: `AI detected fraud probability of ${(onnxProb*100).toFixed(2)}%`, boundary: "threshold=50%", actual: `probability=${(onnxProb*100).toFixed(2)}%`, result: "FAIL", action: "BLOCK" });
+            blocked = true; riskLevel = "BLOCKED";
         }
-
     } catch(e) { console.error("ONNX inference error:", e); }
 
     // If no rules triggered

@@ -76,3 +76,6 @@ If all semantic deterministic checks succeed, the `[Type, Amount, Old_Balance, N
 **Action:** `FAIL -> BLOCK`
 
 If the probability output completes below 50% and all other rules evaluate safely, the UI prints `ALL_RULES_PASSED` and finalizes the offline mesh signature.
+
+5. account age based on the acocunt age there is a limit what it can handles and transfer
+if the account age is very new and 
